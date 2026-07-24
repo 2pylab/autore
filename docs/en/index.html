@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>claude-auto-resume — Auto-resume after Claude Code usage limits</title>
+<title>autore — Auto-resume after Claude Code usage limits</title>
 <meta name="description" content="A lightweight watcher that waits out Claude Code's 5-hour usage limit and automatically resumes your work when it resets.">
 <style>
   :root {
@@ -106,14 +106,14 @@
 
 <nav>
   <div class="container">
-    <span class="logo">claude-auto-resume</span>
+    <span class="logo">autore</span>
     <div class="links">
       <a href="#features">Features</a>
       <a href="#install">Install</a>
       <a href="#usage">Usage</a>
       <a href="#telegram">Telegram</a>
       <a href="#legal">Legal</a>
-      <a href="https://github.com/2pylab/claude-auto-resume">GitHub</a>
+      <a href="https://github.com/2pylab/autore">GitHub</a>
       <a class="lang" href="../">한국어</a>
     </div>
   </div>
@@ -133,7 +133,7 @@
   </div>
   <div class="cta">
     <a class="btn primary" href="#install">Install now</a>
-    <a class="btn" href="https://github.com/2pylab/claude-auto-resume">GitHub repo</a>
+    <a class="btn" href="https://github.com/2pylab/autore">GitHub repo</a>
   </div>
 </header>
 
@@ -157,11 +157,11 @@
   <p class="sub">Dependencies: <code>tmux</code>, GNU <code>date</code> (macOS: <code>brew install coreutils</code>), optional <code>curl</code> (for Telegram)</p>
 
   <h3>One-liner</h3>
-  <pre><code>curl -fsSL https://raw.githubusercontent.com/2pylab/claude-auto-resume/main/install.sh | bash</code></pre>
+  <pre><code>curl -fsSL https://raw.githubusercontent.com/2pylab/autore/main/install.sh | bash</code></pre>
 
   <h3>Or clone and install</h3>
-  <pre><code>git clone https://github.com/2pylab/claude-auto-resume.git
-cd claude-auto-resume
+  <pre><code>git clone https://github.com/2pylab/autore.git
+cd autore
 ./install.sh</code></pre>
 
   <table>
@@ -173,8 +173,8 @@ cd claude-auto-resume
   </table>
 
   <h3>Updating</h3>
-  <pre><code>claude-auto-resume update          # check latest → verify → replace (auto backup)
-claude-auto-resume update --check  # check only</code></pre>
+  <pre><code>autore update          # check latest → verify → replace (auto backup)
+autore update --check  # check only</code></pre>
   <div class="notice">Note for v1.0.0 users: <code>update</code> was introduced in v1.1.0.
     On older versions, re-run the install one-liner above once — afterwards you can use <code>update</code>.</div>
   <p>The downloaded file is only installed after passing a syntax check and the self-test,
@@ -185,8 +185,8 @@ claude-auto-resume update --check  # check only</code></pre>
 <section id="usage">
   <h2><span class="num">03</span>Usage</h2>
   <p class="sub">Two commands — start the watcher, then use Claude Code as usual.</p>
-  <pre><code>claude-auto-resume start     # ① start background watcher
-claude-auto-resume attach    # ② attach to the Claude Code session → work as usual</code></pre>
+  <pre><code>autore start     # ① start background watcher
+autore attach    # ② attach to the Claude Code session → work as usual</code></pre>
 
   <table>
     <tr><th>Command</th><th>Description</th></tr>
@@ -211,7 +211,7 @@ claude-auto-resume attach    # ② attach to the Claude Code session → work as
     <tr><td><code>--message TEXT</code></td><td>Korean "keep going"</td><td>Message typed after reset</td></tr>
     <tr><td><code>--dry-run</code></td><td>—</td><td>Log only, never send (testing)</td></tr>
   </table>
-  <p>Full options: <code>claude-auto-resume --help</code> or the <a href="https://github.com/2pylab/claude-auto-resume#readme">README</a>.</p>
+  <p>Full options: <code>autore --help</code> or the <a href="https://github.com/2pylab/autore#readme">README</a>.</p>
 </section>
 
 <section id="telegram">
@@ -240,7 +240,7 @@ export TELEGRAM_CHAT_ID="123456789"</code></pre>
     <div class="arrow">↓</div>
     <div class="step"><span class="n">5</span><span>If still limited, retries at most 2 times (no message spam)</span></div>
   </div>
-  <p>Every detected limit message is collected in <code>~/.claude-auto-resume-samples.log</code>,
+  <p>Every detected limit message is collected in <code>~/.autore-samples.log</code>,
      so if Anthropic changes the message format, the parser can be updated safely
      (with 16 <code>--selftest</code> regression tests).</p>
 </section>
@@ -268,8 +268,8 @@ export TELEGRAM_CHAT_ID="123456789"</code></pre>
 <footer>
   <div class="container">
     <p>MIT License · Unofficial tool (not affiliated with Anthropic) ·
-       <a href="https://github.com/2pylab/claude-auto-resume">GitHub</a> ·
-       <a href="https://github.com/2pylab/claude-auto-resume/issues">Issues</a></p>
+       <a href="https://github.com/2pylab/autore">GitHub</a> ·
+       <a href="https://github.com/2pylab/autore/issues">Issues</a></p>
   </div>
 </footer>
 

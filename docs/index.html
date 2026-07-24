@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>claude-auto-resume — Claude Code 사용량 제한 자동 재개</title>
+<title>autore — Claude Code 사용량 제한 자동 재개</title>
 <meta name="description" content="Claude Code 5시간 사용량 제한에 걸리면 리셋 시각까지 대기했다가 자동으로 작업을 이어가는 경량 감시 도구">
 <style>
   :root {
@@ -106,14 +106,14 @@
 
 <nav>
   <div class="container">
-    <span class="logo">claude-auto-resume</span>
+    <span class="logo">autore</span>
     <div class="links">
       <a href="#features">기능</a>
       <a href="#install">설치</a>
       <a href="#usage">사용법</a>
       <a href="#telegram">텔레그램</a>
       <a href="#legal">법률 고지</a>
-      <a href="https://github.com/2pylab/claude-auto-resume">GitHub</a>
+      <a href="https://github.com/2pylab/autore">GitHub</a>
       <a class="lang" href="en/">EN</a>
     </div>
   </div>
@@ -133,7 +133,7 @@
   </div>
   <div class="cta">
     <a class="btn primary" href="#install">지금 설치하기</a>
-    <a class="btn" href="https://github.com/2pylab/claude-auto-resume">GitHub 저장소</a>
+    <a class="btn" href="https://github.com/2pylab/autore">GitHub 저장소</a>
   </div>
 </header>
 
@@ -157,11 +157,11 @@
   <p class="sub">의존성: <code>tmux</code>, GNU <code>date</code>(macOS는 <code>brew install coreutils</code>), 선택적으로 <code>curl</code>(텔레그램용)</p>
 
   <h3>원라인 설치</h3>
-  <pre><code>curl -fsSL https://raw.githubusercontent.com/2pylab/claude-auto-resume/main/install.sh | bash</code></pre>
+  <pre><code>curl -fsSL https://raw.githubusercontent.com/2pylab/autore/main/install.sh | bash</code></pre>
 
   <h3>또는 클론 후 설치</h3>
-  <pre><code>git clone https://github.com/2pylab/claude-auto-resume.git
-cd claude-auto-resume
+  <pre><code>git clone https://github.com/2pylab/autore.git
+cd autore
 ./install.sh</code></pre>
 
   <table>
@@ -173,8 +173,8 @@ cd claude-auto-resume
   </table>
 
   <h3>업데이트</h3>
-  <pre><code>claude-auto-resume update          # 최신 버전 확인 → 검증 후 교체 (자동 백업)
-claude-auto-resume update --check  # 새 버전 확인만</code></pre>
+  <pre><code>autore update          # 최신 버전 확인 → 검증 후 교체 (자동 백업)
+autore update --check  # 새 버전 확인만</code></pre>
   <div class="notice">v1.0.0 사용자 참고: <code>update</code> 명령은 v1.1.0부터 있습니다.
     그 이전 버전이라면 위의 설치 원라인을 한 번만 다시 실행하세요 — 이후부터는 <code>update</code>를 쓸 수 있습니다.</div>
   <p>다운로드한 파일은 문법 검사 + 자가진단 통과 후에만 교체되며, 기존 파일은 <code>.bak</code>으로 백업됩니다.
@@ -184,8 +184,8 @@ claude-auto-resume update --check  # 새 버전 확인만</code></pre>
 <section id="usage">
   <h2><span class="num">03</span>사용법</h2>
   <p class="sub">두 명령이면 끝 — 감시를 켜고, 평소처럼 Claude Code를 쓰세요.</p>
-  <pre><code>claude-auto-resume start     # ① 백그라운드 감시 시작
-claude-auto-resume attach    # ② Claude Code 세션 접속 → 평소처럼 작업</code></pre>
+  <pre><code>autore start     # ① 백그라운드 감시 시작
+autore attach    # ② Claude Code 세션 접속 → 평소처럼 작업</code></pre>
 
   <table>
     <tr><th>명령</th><th>설명</th></tr>
@@ -210,7 +210,7 @@ claude-auto-resume attach    # ② Claude Code 세션 접속 → 평소처럼 �
     <tr><td><code>--message TEXT</code></td><td><code>계속 이어서 진행해줘</code></td><td>리셋 후 자동 입력 메시지</td></tr>
     <tr><td><code>--dry-run</code></td><td>—</td><td>실제 전송 없이 로그만 (테스트용)</td></tr>
   </table>
-  <p>전체 옵션은 <code>claude-auto-resume --help</code> 또는 <a href="https://github.com/2pylab/claude-auto-resume#readme">README</a> 참조.</p>
+  <p>전체 옵션은 <code>autore --help</code> 또는 <a href="https://github.com/2pylab/autore#readme">README</a> 참조.</p>
 </section>
 
 <section id="telegram">
@@ -239,7 +239,7 @@ export TELEGRAM_CHAT_ID="123456789"</code></pre>
     <div class="arrow">↓</div>
     <div class="step"><span class="n">5</span><span>여전히 제한 상태면 최대 2회까지만 재시도 (메시지 도배 방지)</span></div>
   </div>
-  <p>감지된 실제 제한 메시지 원문은 <code>~/.claude-auto-resume-samples.log</code>에 자동 수집되어,
+  <p>감지된 실제 제한 메시지 원문은 <code>~/.autore-samples.log</code>에 자동 수집되어,
      Anthropic이 메시지 형식을 바꿔도 파서를 안전하게 업데이트할 수 있습니다
      (<code>--selftest</code> 회귀 테스트 16종).</p>
 </section>
@@ -258,7 +258,7 @@ export TELEGRAM_CHAT_ID="123456789"</code></pre>
     <li>이 소프트웨어는 <strong>어떠한 보증 없이 "있는 그대로"</strong> 제공됩니다 (MIT License).</li>
   </ul>
   <div class="notice">
-    <strong>English:</strong> claude-auto-resume is an unofficial script that simply waits for the
+    <strong>English:</strong> autore is an unofficial script that simply waits for the
     publicly displayed usage-limit reset time and resumes your own session. It does not bypass any
     rate limits. Not affiliated with Anthropic. Use at your own risk; you are responsible for
     complying with Anthropic's Terms of Service. Provided as-is without warranty (MIT).
@@ -270,8 +270,8 @@ export TELEGRAM_CHAT_ID="123456789"</code></pre>
 <footer>
   <div class="container">
     <p>MIT License · 비공식 도구 (Anthropic과 무관) ·
-       <a href="https://github.com/2pylab/claude-auto-resume">GitHub</a> ·
-       <a href="https://github.com/2pylab/claude-auto-resume/issues">이슈 제보</a></p>
+       <a href="https://github.com/2pylab/autore">GitHub</a> ·
+       <a href="https://github.com/2pylab/autore/issues">이슈 제보</a></p>
   </div>
 </footer>
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #===============================================================================
-# claude-auto-resume 설치기 — Linux / macOS
+# autore 설치기 — Linux / macOS
 #
 #   ./install.sh                  ~/.local/bin에 설치
 #   ./install.sh --system         /usr/local/bin에 설치 (sudo 필요할 수 있음)
@@ -9,7 +9,7 @@
 #===============================================================================
 set -euo pipefail
 
-NAME="claude-auto-resume"
+NAME="autore"
 PREFIX="$HOME/.local/bin"
 UNINSTALL=0
 
@@ -29,8 +29,8 @@ for arg in "$@"; do
 done
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" >/dev/null 2>&1 && pwd -P)
-SRC="$SCRIPT_DIR/claude-auto-resume.sh"
-REPO_RAW="https://raw.githubusercontent.com/2pylab/claude-auto-resume/main"
+SRC="$SCRIPT_DIR/autore.sh"
+REPO_RAW="https://raw.githubusercontent.com/2pylab/autore/main"
 
 say() { printf '%s\n' "$*"; }
 
@@ -39,9 +39,9 @@ if [[ ! -f $SRC ]] && (( ! UNINSTALL )); then
   command -v curl >/dev/null 2>&1 || { say "오류: 다운로드에 curl이 필요합니다" >&2; exit 1; }
   TMP_DIR=$(mktemp -d)
   trap 'rm -rf "$TMP_DIR"' EXIT
-  say "본체 스크립트 다운로드 중: $REPO_RAW/claude-auto-resume.sh"
-  curl -fsSL "$REPO_RAW/claude-auto-resume.sh" -o "$TMP_DIR/claude-auto-resume.sh"
-  SRC="$TMP_DIR/claude-auto-resume.sh"
+  say "본체 스크립트 다운로드 중: $REPO_RAW/autore.sh"
+  curl -fsSL "$REPO_RAW/autore.sh" -o "$TMP_DIR/autore.sh"
+  SRC="$TMP_DIR/autore.sh"
 fi
 
 #--- 제거 ------------------------------------------------------------------------
@@ -51,6 +51,11 @@ if (( UNINSTALL )); then
     say "✓ 제거 완료: $PREFIX/$NAME"
   else
     say "설치되어 있지 않음: $PREFIX/$NAME"
+  fi
+  # 구버전(claude-auto-resume) 잔여 설치본도 함께 제거
+  if [[ -f "$PREFIX/claude-auto-resume" ]]; then
+    rm -f "$PREFIX/claude-auto-resume"
+    say "✓ 구버전 제거: $PREFIX/claude-auto-resume"
   fi
   exit 0
 fi
@@ -98,12 +103,17 @@ OLD_VER=""
 mkdir -p "$PREFIX"
 cp "$SRC" "$PREFIX/$NAME"
 chmod +x "$PREFIX/$NAME"
+# 구버전(claude-auto-resume) 설치본이 남아 있으면 정리
+if [[ -f "$PREFIX/claude-auto-resume" ]]; then
+  rm -f "$PREFIX/claude-auto-resume"
+  say "✓ 구버전 정리: $PREFIX/claude-auto-resume 삭제"
+fi
 say ""
 if [[ -z $OLD_VER ]]; then
   say "✓ 설치 완료: $PREFIX/$NAME (v$NEW_VER)"
 elif [[ $OLD_VER != "$NEW_VER" ]]; then
   say "✓ 업데이트 완료: v$OLD_VER → v$NEW_VER"
-  say "  앞으로는 'claude-auto-resume update' 명령으로 간편하게 업데이트할 수 있습니다"
+  say "  앞으로는 'autore update' 명령으로 간편하게 업데이트할 수 있습니다"
 else
   say "✓ 재설치 완료: $PREFIX/$NAME (v$NEW_VER)"
 fi

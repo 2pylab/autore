@@ -1,16 +1,19 @@
-# claude-auto-resume
+# autore
+
+**auto + re(resume / retry / restart)** — AI CLI 사용량 제한 자동 재개 도구
 
 **한국어** | [English](README_EN.md)
 
-Claude Code의 **5시간 사용량 제한**에 걸렸을 때, 리셋 시각까지 대기했다가 **자동으로 작업을 이어가는** 경량 감시 도구입니다.
+Claude Code, OpenCode 등 AI CLI의 **사용량 제한**에 걸렸을 때, 리셋 시각까지 대기했다가 **자동으로 작업을 이어가는** 경량 감시 도구입니다.
 
-tmux 세션에서 실행 중인 Claude Code 화면을 주기적으로 확인하다가, 사용량 제한 메시지를 감지하면 리셋 시각을 파싱해 그 시각까지 잠든 뒤, 세션에 재개 메시지(기본: `계속 이어서 진행해줘`)를 자동 입력합니다. 대화 맥락이 그대로 유지된 채로 작업이 다시 시작됩니다.
+tmux 세션에서 실행 중인 AI CLI 화면을 주기적으로 확인하다가, 사용량 제한 메시지를 감지하면 리셋 시각을 파싱해 그 시각까지 잠든 뒤, 세션에 재개 메시지(기본: `계속 이어서 진행해줘`)를 자동 입력합니다. 대화 맥락이 그대로 유지된 채로 작업이 다시 시작됩니다.
 
-> 📖 안내 웹페이지: <https://2pylab.github.io/claude-auto-resume/>
+> 📖 안내 웹페이지: <https://2pylab.github.io/autore/>
 
 ## 특징
 
 - 🔁 **자동 재개** — 제한 감지 → 리셋 시각 파싱 → 대기 → 세션에 자동 입력
+- 🤖 **멀티 CLI** — Claude Code 기본 지원, `--cli` 옵션으로 OpenCode 등 다른 AI CLI도 감시
 - ⏱ **다단계 시각 파서** — `3pm`, `3:30 PM`, `15:00`, `Jul 28 at 3pm`(주간 제한), `tomorrow at 9am`, 자정/연도 넘김, 화면 줄바꿈까지 처리
 - 🛡 **안전장치** — 같은 제한 메시지 중복 처리 방지, 모순된 시각 거부(5시간 창 검증), 파싱 실패 시 주기적 재시도
 - 📨 **텔레그램 알림** — 제한 감지 / 재개 완료 / 재시도 시 봇 알림 (선택 사항)
@@ -26,60 +29,68 @@ tmux 세션에서 실행 중인 Claude Code 화면을 주기적으로 확인하�
 | tmux | `sudo apt install tmux` | `brew install tmux` |
 | GNU date | 기본 포함 (coreutils) | `brew install coreutils` (→ `gdate`) |
 | curl | 선택 (텔레그램 알림용) | 선택 (텔레그램 알림용) |
-| Claude Code | ✅ | ✅ |
+| AI CLI (Claude Code, OpenCode 등) | ✅ | ✅ |
 
 ## 설치
 
 **원라인 설치:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/2pylab/claude-auto-resume/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/2pylab/autore/main/install.sh | bash
 ```
 
 **또는 클론 후 설치:**
 
 ```bash
-git clone https://github.com/2pylab/claude-auto-resume.git
-cd claude-auto-resume
+git clone https://github.com/2pylab/autore.git
+cd autore
 ./install.sh            # ~/.local/bin에 설치 (의존성 검사 + 자가진단 포함)
 ```
 
 - 시스템 전체 설치: `./install.sh --system`
 - 다른 경로: `./install.sh --prefix=/원하는/경로`
 - 제거: `./install.sh --uninstall`
-- 설치 없이 직접 실행: `./claude-auto-resume.sh start`
+- 설치 없이 직접 실행: `./autore.sh start`
 
 ## 업데이트
 
 설치본에는 자체 업데이트 명령이 있습니다:
 
 ```bash
-claude-auto-resume update          # 최신 버전 확인 → 검증 후 교체
-claude-auto-resume update --check  # 새 버전이 있는지 확인만
+autore update          # 최신 버전 확인 → 검증 후 교체
+autore update --check  # 새 버전이 있는지 확인만
 ```
 
-> **v1.0.0 사용자 참고:** `update` 명령은 v1.1.0부터 있습니다. 그 이전 버전이라면
-> 설치 원라인을 한 번만 다시 실행하세요 — `curl -fsSL https://raw.githubusercontent.com/2pylab/claude-auto-resume/main/install.sh | bash`
-> 설치기가 `v1.0.0 → 최신` 버전 전환을 표시해주며, 이후부터는 `update` 명령을 쓸 수 있습니다.
+> **v1.x(`claude-auto-resume`) 사용자 참고:** v2.0.0부터 이름이 `autore`로 바뀌었습니다.
+> 설치 원라인을 한 번만 다시 실행하면 `autore`로 설치되고 구버전 바이너리는 자동 정리됩니다:
+> `curl -fsSL https://raw.githubusercontent.com/2pylab/autore/main/install.sh | bash`
+> (기존 `claude-auto-resume update`로도 v2.0.0 코드를 받을 수 있지만, 명령어 이름이 그대로이므로 재설치를 권장합니다.
+> 기존 로그·PID 파일은 그대로 이어서 사용합니다.)
 
 - GitHub에서 최신 스크립트를 받아 **문법 검사 + 자가진단(`--selftest`) 통과 후에만** 교체합니다.
-- 기존 파일은 `claude-auto-resume.bak`으로 자동 백업됩니다.
-- 감시 실행 중이면 자동으로 중지 후 교체하므로, 업데이트 뒤 `claude-auto-resume start`로 다시 시작하세요.
+- 기존 파일은 `autore.bak`으로 자동 백업됩니다.
+- 감시 실행 중이면 자동으로 중지 후 교체하므로, 업데이트 뒤 `autore start`로 다시 시작하세요.
 - 그 외 방법: 설치 원라인 재실행(`curl ... | bash`, 덮어쓰기) 또는 클론 사용 시 `git pull && ./install.sh`
 
 ## 빠른 시작
 
 ```bash
-claude-auto-resume start     # ① 백그라운드 감시 시작
-claude-auto-resume attach    # ② Claude Code 세션 접속 → 평소처럼 작업
+autore start     # ① 백그라운드 감시 시작
+autore attach    # ② AI CLI 세션 접속 → 평소처럼 작업
 ```
 
 이제 사용량 제한에 걸려도 신경 끄면 됩니다. 리셋 후 자동으로 이어집니다.
 
+OpenCode 등 다른 AI CLI를 감시하려면:
+
 ```bash
-claude-auto-resume status    # 상태 확인
-claude-auto-resume logs -f   # 실시간 로그
-claude-auto-resume stop      # 감시 중지
+autore start --session opencode --cli opencode
+```
+
+```bash
+autore status    # 상태 확인
+autore logs -f   # 실시간 로그
+autore stop      # 감시 중지
 ```
 
 ## 명령어
@@ -90,9 +101,10 @@ claude-auto-resume stop      # 감시 중지
 | `stop` | 감시 중지 |
 | `status` | 감시 상태 + tmux 세션 + 텔레그램 설정 + 최근 로그 |
 | `logs [-f]` | 로그 보기 (`-f`: 실시간) |
-| `attach` | Claude Code tmux 세션 접속 |
+| `attach` | AI CLI tmux 세션 접속 |
 | `run [옵션]` | 포그라운드 감시 (디버깅용) |
 | `update [--check]` | 최신 버전으로 자동 업데이트 (`--check`: 확인만) |
+| `test-telegram` | 텔레그램 연동 테스트 메시지 발송 |
 | `--selftest` | 리셋 시각 파서 단위 테스트 |
 | `version` | 버전 출력 (`--version`과 동일) |
 | `help` | 도움말 출력 (`-h`, `--help`와 동일) |
@@ -103,15 +115,16 @@ claude-auto-resume stop      # 감시 중지
 
 | 옵션 | 환경변수 | 기본값 | 설명 |
 |---|---|---|---|
-| `--session NAME` | `CLAUDE_SESSION` | `claude` | 감시할 tmux 세션명 |
+| `--session NAME` | `AUTORE_SESSION` | `claude` | 감시할 tmux 세션명 (구 `CLAUDE_SESSION`도 동작) |
+| `--cli CMD` | `CLI_CMD` | `claude` | 세션 생성 시 실행할 AI CLI (예: `opencode`) |
 | `--poll SEC` | `POLL_SEC` | `30` | 화면 확인 주기 |
 | `--buffer SEC` | `BUFFER_SEC` | `90` | 리셋 시각 후 여유 대기 |
 | `--fallback SEC` | `FALLBACK_SEC` | `900` | 시각 파싱 실패 시 재시도 대기 |
 | `--retry SEC` | `RETRY_SAME_KEY_SEC` | `600` | 같은 제한 메시지 재전송 간격 |
 | `--max-resends N` | `MAX_RESENDS` | `2` | 같은 제한 메시지 최대 재전송 횟수 |
 | `--message TEXT` | `RESUME_MESSAGE` | `계속 이어서 진행해줘` | 리셋 후 자동 입력할 메시지 |
-| `--log-file PATH` | `LOG_FILE` | `~/.claude-auto-resume.log` | 로그 파일 |
-| `--samples-file PATH` | `SAMPLES_FILE` | `~/.claude-auto-resume-samples.log` | 파싱 샘플 수집 파일 |
+| `--log-file PATH` | `LOG_FILE` | `~/.autore.log` | 로그 파일 |
+| `--samples-file PATH` | `SAMPLES_FILE` | `~/.autore-samples.log` | 파싱 샘플 수집 파일 |
 | `--telegram-token T` | `TELEGRAM_BOT_TOKEN` | — | 텔레그램 봇 토큰 |
 | `--telegram-chat-id C` | `TELEGRAM_CHAT_ID` | — | 텔레그램 채팅 ID |
 | `--dry-run` | — | — | 실제 전송 없이 로그만 (테스트용) |
@@ -127,7 +140,13 @@ export TELEGRAM_BOT_TOKEN="123456:ABC..."
 export TELEGRAM_CHAT_ID="123456789"
 ```
 
-이후 `claude-auto-resume start` 하면 **제한 감지 / 재개 완료 / 재시도** 시 알림이 옵니다.
+4. 연동 테스트:
+
+```bash
+autore test-telegram   # 테스트 메시지가 오면 설정 완료
+```
+
+이후 `autore start` 하면 **감시 시작 / 제한 감지 / 재개 완료 / 재시도** 시 알림이 옵니다.
 
 > ⚠️ 토큰은 `--telegram-token` CLI 인자로 넘기면 `ps` 출력에 노출될 수 있으니 환경변수 사용을 권장합니다.
 
@@ -136,7 +155,7 @@ export TELEGRAM_CHAT_ID="123456789"
 ```
 ┌─────────────┐   30초마다 화면 확인   ┌──────────────────┐
 │  tmux 세션   │ ───────────────────→ │  감시 프로세스      │
-│ (Claude Code)│                      │                    │
+│  (AI CLI)    │                      │                    │
 └─────────────┘                      │ 1. 제한 메시지 감지  │
        ↑                             │ 2. 리셋 시각 파싱    │
        │  리셋+버퍼 후                │ 3. 그 시각까지 sleep │
@@ -151,14 +170,14 @@ export TELEGRAM_CHAT_ID="123456789"
 
 ## 파싱 샘플 수집 & 파서 업데이트
 
-감지된 실제 제한 메시지 원문과 파싱 결과가 `~/.claude-auto-resume-samples.log`에 자동 수집됩니다.
+감지된 실제 제한 메시지 원문과 파싱 결과가 `~/.autore-samples.log`에 자동 수집됩니다.
 
 Anthropic이 메시지 형식을 바꾸면:
 
 1. 샘플 파일에서 새 형식의 `raw:` 줄 확인
 2. 스크립트의 `LIMIT_REGEX` / 파서 정규식 수정
-3. `./claude-auto-resume.sh --selftest` 로 회귀 테스트 (16종)
-4. 새 형식은 [이슈](https://github.com/2pylab/claude-auto-resume/issues)로 제보해주시면 반영하겠습니다
+3. `./autore.sh --selftest` 로 회귀 테스트 (16종)
+4. 새 형식은 [이슈](https://github.com/2pylab/autore/issues)로 제보해주시면 반영하겠습니다
 
 ## 법률 검토 및 면책조항 (Legal Review & Disclaimer)
 
@@ -175,11 +194,11 @@ Anthropic이 메시지 형식을 바꾸면:
 
 **English summary:**
 
-> claude-auto-resume is an unofficial open-source automation script that reads the usage-limit notice Claude Code already displays, simply waits until the stated reset time, and then resumes your own terminal session. It does **not** bypass, avoid, or circumvent any rate limits, nor does it make any additional API calls. This project is **not affiliated with, endorsed by, or supported by Anthropic**. You are solely responsible for reviewing and complying with Anthropic's Terms of Service and Usage Policies. Provided **as-is, without warranty of any kind** (MIT License). Use at your own risk.
+> autore is an unofficial open-source automation script that reads the usage-limit notice Claude Code already displays, simply waits until the stated reset time, and then resumes your own terminal session. It does **not** bypass, avoid, or circumvent any rate limits, nor does it make any additional API calls. This project is **not affiliated with, endorsed by, or supported by Anthropic**. You are solely responsible for reviewing and complying with Anthropic's Terms of Service and Usage Policies. Provided **as-is, without warranty of any kind** (MIT License). Use at your own risk.
 
 ## 제한사항
 
-- 제한 메시지 형식은 Claude Code 영문 UI 기준입니다. 형식이 바뀌면 샘플 로그를 보고 파서를 업데이트해야 합니다 (위 섹션 참조).
+- 제한 메시지 형식은 Claude Code 영문 UI 및 프로바이더 공통 표현(rate limit, too many requests, quota exceeded) 기준입니다. 형식이 바뀌면 샘플 로그를 보고 파서를 업데이트해야 합니다 (위 섹션 참조).
 - 리셋 시각은 로컬 타임존 기준으로 해석됩니다.
 - 대기 중 사용자가 수동으로 세션을 재개핸도, 예정 시각에 재개 메시지가 한 번 입력될 수 있습니다 (무해하지만 참고).
 

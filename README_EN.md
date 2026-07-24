@@ -1,16 +1,19 @@
-# claude-auto-resume
+# autore
+
+**auto + re(resume / retry / restart)** — auto-resume watcher for AI CLI usage limits
 
 [한국어](README.md) | **English**
 
-A lightweight watcher that waits out Claude Code's **5-hour usage limit** and **automatically resumes your work** when it resets.
+A lightweight watcher that waits out **usage limits** of AI CLIs (Claude Code, OpenCode, ...) and **automatically resumes your work** when they reset.
 
-It periodically checks the screen of a Claude Code session running in tmux. When it detects a usage-limit message, it parses the reset time, sleeps until then, and types a resume message (default: `계속 이어서 진행해줘` — "keep going") into the session. Your conversation context stays intact and work continues automatically.
+It periodically checks the screen of an AI CLI session running in tmux. When it detects a usage-limit message, it parses the reset time, sleeps until then, and types a resume message (default: `계속 이어서 진행해줘` — "keep going") into the session. Your conversation context stays intact and work continues automatically.
 
-> 📖 Docs website: <https://2pylab.github.io/claude-auto-resume/>
+> 📖 Docs website: <https://2pylab.github.io/autore/>
 
 ## Features
 
 - 🔁 **Auto-resume** — detect limit → parse reset time → sleep → type resume message into the session
+- 🤖 **Multi-CLI** — works with Claude Code by default; watch OpenCode and others via `--cli`
 - ⏱ **Layered time parser** — handles `3pm`, `3:30 PM`, `15:00`, `Jul 28 at 3pm` (weekly limits), `tomorrow at 9am`, midnight/year rollover, and line-wrapped messages
 - 🛡 **Safety guards** — dedupes identical limit messages, rejects implausible times (5-hour window validation), periodic retry on parse failure
 - 📨 **Telegram notifications** — bot alerts on limit detection / resume / retry (optional)
@@ -26,61 +29,68 @@ It periodically checks the screen of a Claude Code session running in tmux. When
 | tmux | `sudo apt install tmux` | `brew install tmux` |
 | GNU date | built-in (coreutils) | `brew install coreutils` (provides `gdate`) |
 | curl | optional (Telegram) | optional (Telegram) |
-| Claude Code | ✅ | ✅ |
+| AI CLI (Claude Code, OpenCode, ...) | ✅ | ✅ |
 
 ## Install
 
 **One-liner:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/2pylab/claude-auto-resume/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/2pylab/autore/main/install.sh | bash
 ```
 
 **Or clone and install:**
 
 ```bash
-git clone https://github.com/2pylab/claude-auto-resume.git
-cd claude-auto-resume
+git clone https://github.com/2pylab/autore.git
+cd autore
 ./install.sh            # installs to ~/.local/bin (dependency check + self-test included)
 ```
 
 - System-wide: `./install.sh --system`
 - Custom path: `./install.sh --prefix=/your/path`
 - Uninstall: `./install.sh --uninstall`
-- Run without installing: `./claude-auto-resume.sh start`
+- Run without installing: `./autore.sh start`
 
 ## Updating
 
 The installed command has a built-in self-update:
 
 ```bash
-claude-auto-resume update          # check latest → verify → replace
-claude-auto-resume update --check  # only check whether a new version exists
+autore update          # check latest → verify → replace
+autore update --check  # only check whether a new version exists
 ```
 
-> **Note for v1.0.0 users:** the `update` command was introduced in v1.1.0. On older
-> versions, simply re-run the install one-liner once — `curl -fsSL https://raw.githubusercontent.com/2pylab/claude-auto-resume/main/install.sh | bash`
-> The installer shows the version transition (`v1.0.0 → latest`), and from then on
-> you can use the `update` command.
+> **Note for v1.x (`claude-auto-resume`) users:** the project was renamed to `autore` in v2.0.0.
+> Re-run the install one-liner once — it installs `autore` and removes the old binary:
+> `curl -fsSL https://raw.githubusercontent.com/2pylab/autore/main/install.sh | bash`
+> (The old `claude-auto-resume update` also fetches v2.0.0, but keeps the old command name — reinstalling is recommended.
+> Existing log/PID files are picked up automatically.)
 
 - The new script is downloaded from GitHub and **only installed after passing a syntax check and the self-test (`--selftest`)**.
-- The previous file is backed up automatically to `claude-auto-resume.bak`.
-- If the watcher is running, it is stopped before the replacement — run `claude-auto-resume start` again afterwards.
+- The previous file is backed up automatically to `autore.bak`.
+- If the watcher is running, it is stopped before the replacement — run `autore start` again afterwards.
 - Alternatives: re-run the install one-liner (`curl ... | bash`, overwrites) or, for clones, `git pull && ./install.sh`
 
 ## Quick start
 
 ```bash
-claude-auto-resume start     # ① start background watcher
-claude-auto-resume attach    # ② attach to the Claude Code session → work as usual
+autore start     # ① start background watcher
+autore attach    # ② attach to the AI CLI session → work as usual
 ```
 
 That's it. If you hit the usage limit, it resumes automatically after the reset.
 
+To watch another AI CLI such as OpenCode:
+
 ```bash
-claude-auto-resume status    # check status
-claude-auto-resume logs -f   # live logs
-claude-auto-resume stop      # stop watching
+autore start --session opencode --cli opencode
+```
+
+```bash
+autore status    # check status
+autore logs -f   # live logs
+autore stop      # stop watching
 ```
 
 ## Commands
@@ -91,9 +101,10 @@ claude-auto-resume stop      # stop watching
 | `stop` | Stop the watcher |
 | `status` | Watcher state + tmux session + Telegram config + recent logs |
 | `logs [-f]` | Show logs (`-f`: follow) |
-| `attach` | Attach to the Claude Code tmux session |
+| `attach` | Attach to the AI CLI tmux session |
 | `run [options]` | Foreground watcher (for debugging) |
 | `update [--check]` | Self-update to the latest version (`--check`: check only) |
+| `test-telegram` | Send a Telegram test message to verify the setup |
 | `--selftest` | Parser unit tests |
 | `version` | Print version (same as `--version`) |
 | `help` | Print usage (same as `-h`, `--help`) |
@@ -104,15 +115,16 @@ For `start` / `run` (or use the matching environment variable):
 
 | Option | Env var | Default | Description |
 |---|---|---|---|
-| `--session NAME` | `CLAUDE_SESSION` | `claude` | tmux session to watch |
+| `--session NAME` | `AUTORE_SESSION` | `claude` | tmux session to watch (legacy `CLAUDE_SESSION` also works) |
+| `--cli CMD` | `CLI_CMD` | `claude` | AI CLI to launch when creating the session (e.g. `opencode`) |
 | `--poll SEC` | `POLL_SEC` | `30` | Screen check interval |
 | `--buffer SEC` | `BUFFER_SEC` | `90` | Extra wait after reset time |
 | `--fallback SEC` | `FALLBACK_SEC` | `900` | Retry delay when time parsing fails |
 | `--retry SEC` | `RETRY_SAME_KEY_SEC` | `600` | Resend interval for the same limit message |
 | `--max-resends N` | `MAX_RESENDS` | `2` | Max resends for the same limit message |
 | `--message TEXT` | `RESUME_MESSAGE` | `계속 이어서 진행해줘` | Message typed after reset |
-| `--log-file PATH` | `LOG_FILE` | `~/.claude-auto-resume.log` | Log file |
-| `--samples-file PATH` | `SAMPLES_FILE` | `~/.claude-auto-resume-samples.log` | Parse-sample collection file |
+| `--log-file PATH` | `LOG_FILE` | `~/.autore.log` | Log file |
+| `--samples-file PATH` | `SAMPLES_FILE` | `~/.autore-samples.log` | Parse-sample collection file |
 | `--telegram-token T` | `TELEGRAM_BOT_TOKEN` | — | Telegram bot token |
 | `--telegram-chat-id C` | `TELEGRAM_CHAT_ID` | — | Telegram chat ID |
 | `--dry-run` | — | — | Log only, never send (for testing) |
@@ -128,7 +140,13 @@ export TELEGRAM_BOT_TOKEN="123456:ABC..."
 export TELEGRAM_CHAT_ID="123456789"
 ```
 
-Then `claude-auto-resume start` will notify you on **limit detection / resume / retry**.
+4. Verify the integration:
+
+```bash
+autore test-telegram   # setup is complete when the test message arrives
+```
+
+Then `autore start` will notify you on **watcher start / limit detection / resume / retry**.
 
 > ⚠️ Passing the token as a CLI argument can expose it in `ps` output — environment variables are recommended.
 
@@ -138,7 +156,7 @@ Then `claude-auto-resume start` will notify you on **limit detection / resume / 
 ┌─────────────┐   checks screen       ┌──────────────────┐
 │  tmux        │   every 30s          │  watcher          │
 │  session     │ ───────────────────→ │  process          │
-│ (Claude Code)│                      │                   │
+│  (AI CLI)    │                      │                   │
 └─────────────┘                      │ 1. detect limit    │
        ↑                             │ 2. parse reset time│
        │  after reset+buffer         │ 3. sleep until then│
@@ -153,14 +171,14 @@ Then `claude-auto-resume start` will notify you on **limit detection / resume / 
 
 ## Parse samples & parser updates
 
-Every detected limit message and its parse result is collected in `~/.claude-auto-resume-samples.log`.
+Every detected limit message and its parse result is collected in `~/.autore-samples.log`.
 
 If Anthropic changes the message format:
 
 1. Check the new `raw:` lines in the samples file
 2. Update `LIMIT_REGEX` / parser regexes in the script
-3. Run `./claude-auto-resume.sh --selftest` (16 regression tests)
-4. Please [open an issue](https://github.com/2pylab/claude-auto-resume/issues) with the new format so we can ship the fix
+3. Run `./autore.sh --selftest` (16 regression tests)
+4. Please [open an issue](https://github.com/2pylab/autore/issues) with the new format so we can ship the fix
 
 ## Legal Review & Disclaimer
 
@@ -177,7 +195,7 @@ If Anthropic changes the message format:
 
 ## Limitations
 
-- Message formats are based on the English Claude Code UI. If the format changes, update the parser using the samples log (see above).
+- Message formats are based on the English Claude Code UI and common provider phrasings (rate limit, too many requests, quota exceeded). If the format changes, update the parser using the samples log (see above).
 - Reset times are interpreted in the local timezone.
 - If you manually resume the session while the watcher is waiting, one resume message may still be typed at the scheduled time (harmless, but good to know).
 
