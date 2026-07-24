@@ -16,7 +16,8 @@
 #===============================================================================
 set -uo pipefail
 
-VERSION="1.0.0"
+VERSION="1.1.0"
+REPO_RAW="https://raw.githubusercontent.com/2pylab/claude-auto-resume/main"
 
 #--- 스크립트 절대 경로 (macOS 호환: readlink -f 미사용) -------------------------
 SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" >/dev/null 2>&1 && pwd -P)
@@ -46,6 +47,7 @@ MONTH_REGEX='(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|tomorrow)'
 DRY_RUN=0
 SELFTEST=0
 LOGS_FOLLOW=0
+UPDATE_CHECK=0
 CMD=""
 DATE=""
 
@@ -60,6 +62,7 @@ claude-auto-resume v${VERSION} — Claude Code 사용량 제한 자동 재개 �
   claude-auto-resume logs [-f]      로그 보기 (-f: 실시간 따라가기)
   claude-auto-resume attach         Claude Code tmux 세션 접속
   claude-auto-resume run [옵션]     포그라운드 감시 (디버깅용)
+  claude-auto-resume update [--check] 최신 버전으로 업데이트 (--check: 확인만)
   claude-auto-resume --selftest     리셋 시각 파서 단위 테스트
   claude-auto-resume --version      버전 출력
 
@@ -96,6 +99,10 @@ while (($#)); do
     logs)
       CMD="logs"; shift
       [[ ${1:-} == -f ]] && { LOGS_FOLLOW=1; shift; }
+      ;;
+    update)
+      CMD="update"; shift
+      [[ ${1:-} == "--check" ]] && { UPDATE_CHECK=1; shift; }
       ;;
     --session)        need_value "$@"; SESSION="$2"; shift 2 ;;
     --poll)           need_value "$@"; POLL_SEC="$2"; shift 2 ;;
@@ -486,6 +493,68 @@ cmd_attach() {
   exec tmux attach -t "$SESSION"
 }
 
+cmd_update() {
+  command -v curl >/dev/null 2>&1 || { echo "오류: curl이 필요합니다" >&2; exit 1; }
+
+  local tmp remote_ver
+  tmp=$(mktemp)
+  echo "최신 버전 확인 중: $REPO_RAW/claude-auto-resume.sh"
+  if ! curl -fsSL "$REPO_RAW/claude-auto-resume.sh" -o "$tmp"; then
+    rm -f "$tmp"
+    echo "오류: 최신 버전을 가져오지 못했습니다 (네트워크 확인)" >&2
+    exit 1
+  fi
+  remote_ver=$(sed -n 's/^VERSION="\([^"]*\)".*/\1/p' "$tmp" | head -n 1)
+  if [[ -z $remote_ver ]]; then
+    rm -f "$tmp"
+    echo "오류: 버전 정보를 읽지 못했습니다" >&2
+    exit 1
+  fi
+
+  if [[ $remote_ver == "$VERSION" ]]; then
+    rm -f "$tmp"
+    echo "✓ 이미 최신 버전입니다 (v$VERSION)"
+    exit 0
+  fi
+  echo "새 버전 발견: v$VERSION → v$remote_ver"
+  if (( UPDATE_CHECK )); then
+    rm -f "$tmp"
+    exit 0
+  fi
+
+  # 다운로드 파일 검증: 문법 검사 + 자가진단 통과 시에만 교체
+  if ! bash -n "$tmp" || ! bash "$tmp" --selftest >/dev/null 2>&1; then
+    rm -f "$tmp"
+    echo "오류: 다운로드한 파일이 검증에 실패했습니다 — 업데이트 중단" >&2
+    exit 1
+  fi
+  if [[ ! -w $SCRIPT_PATH ]]; then
+    rm -f "$tmp"
+    echo "오류: $SCRIPT_PATH 에 쓰기 권한이 없습니다 (sudo 또는 install.sh 재설치)" >&2
+    exit 1
+  fi
+
+  # 감시 실행 중이면 중지 후 교체 (실행 중인 bash 스크립트 덮어쓰기 방지)
+  local was_running=0
+  if is_running; then
+    was_running=1
+    echo "감시 프로세스 중지 중..."
+    cmd_stop >/dev/null
+  fi
+
+  cp "$SCRIPT_PATH" "$SCRIPT_PATH.bak"
+  if ! cp "$tmp" "$SCRIPT_PATH"; then
+    cp "$SCRIPT_PATH.bak" "$SCRIPT_PATH"
+    rm -f "$tmp"
+    echo "오류: 파일 교체 실패 — 백업으로 복원했습니다" >&2
+    exit 1
+  fi
+  chmod +x "$SCRIPT_PATH"
+  rm -f "$tmp"
+  echo "✓ 업데이트 완료: v$VERSION → v$remote_ver (백업: $SCRIPT_PATH.bak)"
+  (( was_running )) && echo "  감시가 중지된 상태입니다 — 다시 시작: claude-auto-resume start"
+}
+
 #--- 디스패치 --------------------------------------------------------------------
 case "$CMD" in
   selftest) selftest ;;
@@ -495,4 +564,5 @@ case "$CMD" in
   status)   cmd_status ;;
   logs)     cmd_logs ;;
   attach)   cmd_attach ;;
+  update)   cmd_update ;;
 esac

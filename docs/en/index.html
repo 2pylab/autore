@@ -171,6 +171,13 @@ cd claude-auto-resume
     <tr><td><code>./install.sh --prefix=PATH</code></td><td>Install to a custom path</td></tr>
     <tr><td><code>./install.sh --uninstall</code></td><td>Uninstall</td></tr>
   </table>
+
+  <h3>Updating</h3>
+  <pre><code>claude-auto-resume update          # check latest → verify → replace (auto backup)
+claude-auto-resume update --check  # check only</code></pre>
+  <p>The downloaded file is only installed after passing a syntax check and the self-test,
+     and the previous file is backed up to <code>.bak</code>. If the watcher is running it is
+     stopped first — run <code>start</code> again afterwards.</p>
 </section>
 
 <section id="usage">
@@ -187,6 +194,7 @@ claude-auto-resume attach    # ② attach to the Claude Code session → work as
     <tr><td><code>logs [-f]</code></td><td>Show logs (<code>-f</code>: follow)</td></tr>
     <tr><td><code>attach</code></td><td>Attach to the Claude Code tmux session</td></tr>
     <tr><td><code>run [options]</code></td><td>Foreground watcher (for debugging)</td></tr>
+    <tr><td><code>update [--check]</code></td><td>Self-update to the latest version (<code>--check</code>: check only)</td></tr>
     <tr><td><code>--selftest</code></td><td>16 parser unit tests</td></tr>
   </table>
 

@@ -49,6 +49,20 @@ cd claude-auto-resume
 - 제거: `./install.sh --uninstall`
 - 설치 없이 직접 실행: `./claude-auto-resume.sh start`
 
+## 업데이트
+
+설치본에는 자체 업데이트 명령이 있습니다:
+
+```bash
+claude-auto-resume update          # 최신 버전 확인 → 검증 후 교체
+claude-auto-resume update --check  # 새 버전이 있는지 확인만
+```
+
+- GitHub에서 최신 스크립트를 받아 **문법 검사 + 자가진단(`--selftest`) 통과 후에만** 교체합니다.
+- 기존 파일은 `claude-auto-resume.bak`으로 자동 백업됩니다.
+- 감시 실행 중이면 자동으로 중지 후 교체하므로, 업데이트 뒤 `claude-auto-resume start`로 다시 시작하세요.
+- 그 외 방법: 설치 원라인 재실행(`curl ... | bash`, 덮어쓰기) 또는 클론 사용 시 `git pull && ./install.sh`
+
 ## 빠른 시작
 
 ```bash
@@ -74,6 +88,7 @@ claude-auto-resume stop      # 감시 중지
 | `logs [-f]` | 로그 보기 (`-f`: 실시간) |
 | `attach` | Claude Code tmux 세션 접속 |
 | `run [옵션]` | 포그라운드 감시 (디버깅용) |
+| `update [--check]` | 최신 버전으로 자동 업데이트 (`--check`: 확인만) |
 | `--selftest` | 리셋 시각 파서 단위 테스트 |
 | `--version` | 버전 출력 |
 

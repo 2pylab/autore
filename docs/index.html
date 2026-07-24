@@ -171,6 +171,12 @@ cd claude-auto-resume
     <tr><td><code>./install.sh --prefix=경로</code></td><td>지정 경로에 설치</td></tr>
     <tr><td><code>./install.sh --uninstall</code></td><td>제거</td></tr>
   </table>
+
+  <h3>업데이트</h3>
+  <pre><code>claude-auto-resume update          # 최신 버전 확인 → 검증 후 교체 (자동 백업)
+claude-auto-resume update --check  # 새 버전 확인만</code></pre>
+  <p>다운로드한 파일은 문법 검사 + 자가진단 통과 후에만 교체되며, 기존 파일은 <code>.bak</code>으로 백업됩니다.
+     감시 실행 중이면 자동 중지 후 교체하니 업데이트 뒤 <code>start</code>로 다시 시작하세요.</p>
 </section>
 
 <section id="usage">
@@ -187,6 +193,7 @@ claude-auto-resume attach    # ② Claude Code 세션 접속 → 평소처럼 �
     <tr><td><code>logs [-f]</code></td><td>로그 보기 (<code>-f</code>: 실시간)</td></tr>
     <tr><td><code>attach</code></td><td>Claude Code tmux 세션 접속</td></tr>
     <tr><td><code>run [옵션]</code></td><td>포그라운드 감시 (디버깅용)</td></tr>
+    <tr><td><code>update [--check]</code></td><td>최신 버전으로 자동 업데이트 (<code>--check</code>: 확인만)</td></tr>
     <tr><td><code>--selftest</code></td><td>파서 단위 테스트 16종</td></tr>
   </table>
 

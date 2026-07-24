@@ -49,6 +49,20 @@ cd claude-auto-resume
 - Uninstall: `./install.sh --uninstall`
 - Run without installing: `./claude-auto-resume.sh start`
 
+## Updating
+
+The installed command has a built-in self-update:
+
+```bash
+claude-auto-resume update          # check latest → verify → replace
+claude-auto-resume update --check  # only check whether a new version exists
+```
+
+- The new script is downloaded from GitHub and **only installed after passing a syntax check and the self-test (`--selftest`)**.
+- The previous file is backed up automatically to `claude-auto-resume.bak`.
+- If the watcher is running, it is stopped before the replacement — run `claude-auto-resume start` again afterwards.
+- Alternatives: re-run the install one-liner (`curl ... | bash`, overwrites) or, for clones, `git pull && ./install.sh`
+
 ## Quick start
 
 ```bash
@@ -74,6 +88,7 @@ claude-auto-resume stop      # stop watching
 | `logs [-f]` | Show logs (`-f`: follow) |
 | `attach` | Attach to the Claude Code tmux session |
 | `run [options]` | Foreground watcher (for debugging) |
+| `update [--check]` | Self-update to the latest version (`--check`: check only) |
 | `--selftest` | Parser unit tests |
 | `--version` | Print version |
 
