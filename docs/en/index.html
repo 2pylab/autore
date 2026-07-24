@@ -7,6 +7,7 @@
 <meta name="description" content="A lightweight watcher that waits out usage limits of AI CLIs (Claude Code, OpenCode, ...) and automatically resumes your work when they reset">
 <link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
 <link rel="apple-touch-icon" href="../assets/favicon.svg">
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 <style>
   :root {
     --bg: #0d1117; --surface: #161b22; --border: #30363d;
@@ -16,7 +17,7 @@
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
     background: var(--bg); color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     line-height: 1.7;
   }
   a { color: var(--accent2); text-decoration: none; }
@@ -29,7 +30,7 @@
     border-bottom: 1px solid var(--border);
   }
   nav .container { display: flex; align-items: center; gap: 18px; height: 56px; flex-wrap: wrap; }
-  nav .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--text); font-family: ui-monospace, monospace; }
+  nav .brand { display: flex; align-items: center; gap: 8px; font-weight: 800; color: var(--text); font-family: "Pretendard Variable", Pretendard, sans-serif; letter-spacing: -0.5px; }
   nav .brand img { width: 24px; height: 24px; }
   nav .links { display: flex; gap: 14px; margin-left: auto; font-size: 14px; flex-wrap: wrap; }
   nav .links a { color: var(--muted); }
@@ -38,7 +39,7 @@
 
   .hero { text-align: center; padding: 64px 20px 48px; }
   .hero-logo { width: 88px; height: 88px; margin-bottom: 18px; }
-  .hero h1 { font-size: 52px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -1px; }
+  .hero h1 { font-size: 56px; font-family: "Pretendard Variable", Pretendard, sans-serif; font-weight: 800; letter-spacing: -2px; }
   .hero h1 .re {
     background: linear-gradient(135deg, #34d399, #22d3ee);
     -webkit-background-clip: text; background-clip: text; color: transparent;
@@ -78,9 +79,15 @@
 
   pre {
     position: relative; background: var(--surface); border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
     border-radius: 10px; padding: 16px; overflow-x: auto; margin: 14px 0;
   }
   pre code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; }
+  .tok-cmd  { color: #7ee787; }            /* commands */
+  .tok-str  { color: #a5d6ff; }            /* strings */
+  .tok-flag { color: #79c0ff; }            /* flags */
+  .tok-com  { color: #8b949e; font-style: italic; } /* comments */
+  .note { color: var(--muted); font-size: 14px; }
   .copy-btn {
     position: absolute; top: 8px; right: 8px;
     background: var(--bg); color: var(--muted); border: 1px solid var(--border);
@@ -138,8 +145,9 @@
   <h1>auto<span class="re">re</span></h1>
   <p class="etym">auto + re(resume / retry / restart)</p>
   <p class="tagline">
-    Hit a <strong>usage limit</strong> on Claude Code, OpenCode, or another AI CLI?
-    This lightweight watcher waits for the reset and <strong>automatically resumes your work</strong>.
+    Hit a <strong>usage limit</strong> on Claude Code? This lightweight watcher waits for the reset
+    and <strong>automatically resumes your work</strong>.
+    <br><span class="note">(Also works with other AI CLIs like OpenCode)</span>
   </p>
   <div class="badges">
     <span class="badge ver">v2.0.0</span>
@@ -162,7 +170,7 @@
   <p class="sub">No more babysitting the rate limit — when it resets, your session picks up where it left off.</p>
   <div class="grid">
     <div class="card"><h3>🔁 Auto-resume</h3><p>Detect limit → parse reset time → sleep → type the resume message into your session. Conversation context stays intact.</p></div>
-    <div class="card"><h3>🤖 Multi-CLI</h3><p>Works with Claude Code by default. One flag — <code>--cli opencode</code> — watches OpenCode and other AI CLIs.</p></div>
+    <div class="card"><h3>🤖 Multi-CLI</h3><p><code>--cli</code> can watch other AI CLIs — though OpenCode already retries rate limits on its own, so this is mainly useful for Telegram alerts.</p></div>
     <div class="card"><h3>⏱ Layered time parser</h3><p>Handles <code>3pm</code>, <code>3:30 PM</code>, <code>15:00</code>, <code>Jul 28 at 3pm</code> (weekly limits), <code>tomorrow at 9am</code>, midnight/year rollover, and wrapped lines.</p></div>
     <div class="card"><h3>🛡 Safety guards</h3><p>Dedupes identical limit messages, rejects implausible times (limit-window validation), periodic retry on parse failure.</p></div>
     <div class="card"><h3>📨 Telegram alerts</h3><p>Bot notifications on watcher start, limit detection, resume, and retry. Verify the setup instantly with <code>test-telegram</code>.</p></div>
@@ -212,6 +220,8 @@ autore attach    # ② attach to the AI CLI session → work as usual</code></pr
 
   <h3>Watching another AI CLI (e.g. OpenCode)</h3>
   <pre><code>autore start --session opencode --cli opencode</code></pre>
+  <p class="note">Note: OpenCode has built-in rate-limit retry and resumes on its own — autore is only
+     useful here if you want Telegram alerts, or for other AI CLIs without built-in retry.</p>
 
   <table>
     <tr><th>Command</th><th>Description</th></tr>
@@ -303,6 +313,31 @@ export TELEGRAM_CHAT_ID="123456789"</code></pre>
 </footer>
 
 <script>
+/* Lightweight bash syntax highlighting — no external libraries */
+(function () {
+  function esc(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function highlightCode(src) {
+    var s = esc(src);
+    s = s.replace(/("[^"\n]*")/g, '<span class="tok-str">$1</span>');
+    s = s.replace(/(^|[\s|])(\.\/install\.sh|autore|curl|git|tmux|export|cd|bash)(?=\s|$)/gm,
+      '$1<span class="tok-cmd">$2</span>');
+    s = s.replace(/(^|\s)(-{1,2}[A-Za-z][\w-]*(=[^\s]+)?)/g,
+      '$1<span class="tok-flag">$2</span>');
+    return s;
+  }
+  function highlightLine(line) {
+    if (/^\s*#/.test(line)) return '<span class="tok-com">' + esc(line) + '</span>';
+    var idx = line.indexOf(' #');
+    if (idx === -1) return highlightCode(line);
+    return highlightCode(line.slice(0, idx)) + '<span class="tok-com">' + esc(line.slice(idx)) + '</span>';
+  }
+  document.querySelectorAll('pre code').forEach(function (code) {
+    code.innerHTML = code.textContent.split('\n').map(highlightLine).join('\n');
+  });
+})();
+
 document.querySelectorAll('pre').forEach(function (pre) {
   var btn = document.createElement('button');
   btn.className = 'copy-btn';

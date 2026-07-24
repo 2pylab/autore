@@ -13,7 +13,7 @@ It periodically checks the screen of an AI CLI session running in tmux. When it 
 ## Features
 
 - 🔁 **Auto-resume** — detect limit → parse reset time → sleep → type resume message into the session
-- 🤖 **Multi-CLI** — works with Claude Code by default; watch OpenCode and others via `--cli`
+- 🤖 **Multi-CLI** — watch other AI CLIs via `--cli` (note: OpenCode has built-in rate-limit retry, so this is mainly useful for Telegram alerts)
 - ⏱ **Layered time parser** — handles `3pm`, `3:30 PM`, `15:00`, `Jul 28 at 3pm` (weekly limits), `tomorrow at 9am`, midnight/year rollover, and line-wrapped messages
 - 🛡 **Safety guards** — dedupes identical limit messages, rejects implausible times (5-hour window validation), periodic retry on parse failure
 - 📨 **Telegram notifications** — bot alerts on limit detection / resume / retry (optional)
@@ -86,6 +86,9 @@ To watch another AI CLI such as OpenCode:
 ```bash
 autore start --session opencode --cli opencode
 ```
+
+> Note: OpenCode has built-in rate-limit retry and resumes on its own — autore is only
+> useful here if you want Telegram alerts, or for other AI CLIs without built-in retry.
 
 ```bash
 autore status    # check status
