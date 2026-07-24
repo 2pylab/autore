@@ -20,6 +20,7 @@ It periodically checks the screen of an AI CLI session running in tmux. When it 
 - 🧪 **Built-in self-test** — `--selftest` runs 16 parser unit tests
 - 🐧🍎 **Linux + macOS** — bash 3.2 compatible; macOS only needs coreutils
 - 🌐 **Bilingual output** — CLI messages, logs, and Telegram alerts follow the OS locale (Korean/English)
+- 🔄 **Auto-update** — checks for a new version at watcher start and periodically (default 24h), verifies and replaces itself (disable with `--no-auto-update`)
 - 📦 **One-line install** — installer with dependency checks
 
 ## Requirements
@@ -131,6 +132,8 @@ For `start` / `run` (or use the matching environment variable):
 | `--samples-file PATH` | `SAMPLES_FILE` | `~/.autore-samples.log` | Parse-sample collection file |
 | `--telegram-token T` | `TELEGRAM_BOT_TOKEN` | — | Telegram bot token |
 | `--telegram-chat-id C` | `TELEGRAM_CHAT_ID` | — | Telegram chat ID |
+| `--no-auto-update` | `AUTO_UPDATE` | on | Disable auto-update |
+| `--auto-update-sec S` | `AUTO_UPDATE_SEC` | `86400` | Auto-update check interval (seconds) |
 | `--dry-run` | — | — | Log only, never send (for testing) |
 
 ## Telegram notifications (optional)

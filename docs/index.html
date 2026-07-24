@@ -150,7 +150,7 @@
     <br><span class="note">(OpenCode 등 다른 AI CLI에도 사용 가능)</span>
   </p>
   <div class="badges">
-    <span class="badge ver">v2.1.0</span>
+    <span class="badge ver">v2.2.0</span>
     <span class="badge">멀티 CLI (Claude Code · OpenCode)</span>
     <span class="badge">Linux · macOS</span>
     <span class="badge">bash 3.2+</span>
@@ -176,6 +176,7 @@
     <div class="card"><h3>📨 텔레그램 알림</h3><p>감시 시작 / 제한 감지 / 재개 완료 / 재시도 시 봇 알림. <code>test-telegram</code>으로 연동 즉시 확인.</p></div>
     <div class="card"><h3>🎨 보기 좋은 상태 출력</h3><p><code>status</code>가 현재 상태(실시간)와 최근 로그(과거 기록)를 컬러로 구분해 표시.</p></div>
     <div class="card"><h3>🌐 한/영 출력</h3><p>OS 로케일에 따라 CLI 메시지·로그·텔레그램 알림이 한국어/영어로 자동 전환.</p></div>
+    <div class="card"><h3>🔄 자동 업데이트</h3><p>감시 시작 시 + 24시간마다 새 버전을 확인해 검증 후 자동 교체. <code>--no-auto-update</code>로 비활성화.</p></div>
     <div class="card"><h3>🧪 자가진단 내장</h3><p><code>--selftest</code>로 파서 단위 테스트 16종 실행.</p></div>
     <div class="card"><h3>📦 원라인 설치</h3><p>의존성 검사 + 자가진단 포함 설치 스크립트. Linux와 macOS 모두 지원.</p></div>
   </div>
@@ -248,6 +249,8 @@ autore attach    # ② AI CLI 세션 접속 → 평소처럼 작업</code></pre>
     <tr><td><code>--fallback SEC</code></td><td><code>900</code></td><td>시각 파싱 실패 시 재시도 대기</td></tr>
     <tr><td><code>--max-resends N</code></td><td><code>2</code></td><td>같은 제한 메시지 최대 재전송</td></tr>
     <tr><td><code>--message TEXT</code></td><td><code>계속 이어서 진행해줘</code></td><td>리셋 후 자동 입력 메시지</td></tr>
+    <tr><td><code>--no-auto-update</code></td><td>활성</td><td>자동 업데이트 비활성화</td></tr>
+    <tr><td><code>--auto-update-sec S</code></td><td><code>86400</code></td><td>자동 업데이트 확인 주기 (초)</td></tr>
     <tr><td><code>--dry-run</code></td><td>—</td><td>실제 전송 없이 로그만 (테스트용)</td></tr>
   </table>
   <p>전체 옵션은 <code>autore help</code> 또는 <a href="https://github.com/2pylab/autore#readme">README</a> 참조.</p>

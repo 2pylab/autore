@@ -20,6 +20,7 @@ tmux 세션에서 실행 중인 AI CLI 화면을 주기적으로 확인하다가
 - 🧪 **자가진단 내장** — `--selftest`로 파서 단위 테스트 16종 실행
 - 🐧🍎 **Linux + macOS** — bash 3.2 호환, macOS는 coreutils만 있으면 동작
 - 🌐 **한/영 출력** — OS 로케일에 따라 CLI 메시지·로그·텔레그램 알림이 한국어/영어로 자동 전환
+- 🔄 **자동 업데이트** — 감시 시작 시 + 주기적(기본 24시간)으로 새 버전 확인, 검증 후 자동 교체 (`--no-auto-update`로 끄기)
 - 📦 **원라인 설치** — 의존성 검사 포함 설치 스크립트
 
 ## 요구사항
@@ -131,6 +132,8 @@ autore stop      # 감시 중지
 | `--samples-file PATH` | `SAMPLES_FILE` | `~/.autore-samples.log` | 파싱 샘플 수집 파일 |
 | `--telegram-token T` | `TELEGRAM_BOT_TOKEN` | — | 텔레그램 봇 토큰 |
 | `--telegram-chat-id C` | `TELEGRAM_CHAT_ID` | — | 텔레그램 채팅 ID |
+| `--no-auto-update` | `AUTO_UPDATE` | 활성 | 자동 업데이트 끄기 |
+| `--auto-update-sec S` | `AUTO_UPDATE_SEC` | `86400` | 자동 업데이트 확인 주기 (초) |
 | `--dry-run` | — | — | 실제 전송 없이 로그만 (테스트용) |
 
 ## 텔레그램 알림 설정 (선택)

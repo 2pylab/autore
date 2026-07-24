@@ -20,8 +20,8 @@
 #===============================================================================
 set -uo pipefail
 
-VERSION="2.1.0"
-REPO_RAW="https://raw.githubusercontent.com/2pylab/autore/main"
+VERSION="2.2.0"
+REPO_RAW="${REPO_RAW:-https://raw.githubusercontent.com/2pylab/autore/main}"
 
 #--- 스크립트 절대 경로 (macOS 호환: readlink -f 미사용) -------------------------
 SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" >/dev/null 2>&1 && pwd -P)
@@ -214,6 +214,18 @@ MSG_EN_upd_restart="  the watcher is stopped — restart: autore start"
 MSG_KO_default_resume_msg="계속 이어서 진행해줘"
 MSG_EN_default_resume_msg="Keep going and continue"
 
+#--- 자동 업데이트 ---
+MSG_KO_log_autoupdate_found="자동 업데이트: 새 버전 발견 v%s → v%s"
+MSG_EN_log_autoupdate_found="auto-update: new version found v%s → v%s"
+MSG_KO_log_autoupdate_done="자동 업데이트 완료 — v%s로 재시작합니다"
+MSG_EN_log_autoupdate_done="auto-update complete — restarting with v%s"
+MSG_KO_log_autoupdate_fail="자동 업데이트 실패 — 기존 버전으로 계속 동작합니다"
+MSG_EN_log_autoupdate_fail="auto-update failed — continuing with the current version"
+MSG_KO_log_autoupdate_fetch_fail="자동 업데이트 확인 실패 (네트워크) — 다음 주기에 재시도"
+MSG_EN_log_autoupdate_fetch_fail="auto-update check failed (network) — will retry next interval"
+MSG_KO_tg_autoupdate="[autore] 자동 업데이트 완료: v%s → v%s"
+MSG_EN_tg_autoupdate="[autore] Auto-updated: v%s → v%s"
+
 #--- 기본 설정값 (환경변수로 재정의 가능, CLI 옵션이 최우선) ----------------------
 # 구버전(claude-auto-resume) 상태 파일 하위호환 — 새 파일이 없고 구 파일만 있으면 구 파일 사용
 _legacy_file() { [[ -f $1 || ! -f $2 ]] && printf '%s\n' "$1" || printf '%s\n' "$2"; }
@@ -231,6 +243,8 @@ SAMPLES_FILE="${SAMPLES_FILE:-$(_legacy_file "$HOME/.autore-samples.log" "$HOME/
 PID_FILE="${PID_FILE:-$(_legacy_file "$HOME/.autore.pid" "$HOME/.claude-auto-resume.pid")}"
 TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-}"
 TELEGRAM_CHAT_ID="${TELEGRAM_CHAT_ID:-}"
+AUTO_UPDATE="${AUTO_UPDATE:-1}"                 # 0이면 자동 업데이트 비활성화
+AUTO_UPDATE_SEC="${AUTO_UPDATE_SEC:-86400}"     # 자동 업데이트 확인 주기 (기본 24시간)
 
 TAIL_LINES=40               # 화면 하단 몇 줄을 검사할지
 GRACE_SEC=300               # 이 시간 이내로 지난 리셋 시각은 '방금 지남'으로 간주
@@ -279,11 +293,13 @@ autore v${VERSION} — AI CLI 사용량 제한 자동 재개 도구
   --samples-file PATH 제한 메시지 샘플 수집 파일    (기본: ~/.autore-samples.log)
   --telegram-token T  텔레그램 봇 토큰 (채팅 ID와 함께 설정 시 알림 활성화)
   --telegram-chat-id C 텔레그램 채팅 ID
+  --no-auto-update    자동 업데이트 비활성화       (기본: 활성 — 시작 시 + 주기마다 확인)
+  --auto-update-sec S 자동 업데이트 확인 주기      (기본: 86400)
   --dry-run           실제 전송 없이 로그만 기록
 
 환경변수로도 설정 가능: CLI_CMD, POLL_SEC, BUFFER_SEC, FALLBACK_SEC,
 RETRY_SAME_KEY_SEC, MAX_RESENDS, RESUME_MESSAGE, LOG_FILE, SAMPLES_FILE,
-TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID (CLI 옵션이 우선)
+TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, AUTO_UPDATE, AUTO_UPDATE_SEC (CLI 옵션이 우선)
 
 오픈코드 사용 예: autore start --session opencode --cli opencode
 출력 언어: OS 로케일 자동 감지 (한국어/영어)
@@ -321,11 +337,13 @@ Options (start / run):
   --samples-file PATH limit-message sample file        (default: ~/.autore-samples.log)
   --telegram-token T  Telegram bot token (enables alerts with chat ID)
   --telegram-chat-id C Telegram chat ID
+  --no-auto-update    disable auto-update          (default: on — checks at start + every interval)
+  --auto-update-sec S auto-update check interval   (default: 86400)
   --dry-run           log only, never send
 
 Also configurable via env vars: CLI_CMD, POLL_SEC, BUFFER_SEC, FALLBACK_SEC,
 RETRY_SAME_KEY_SEC, MAX_RESENDS, RESUME_MESSAGE, LOG_FILE, SAMPLES_FILE,
-TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID (CLI options take precedence)
+TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, AUTO_UPDATE, AUTO_UPDATE_SEC (CLI options take precedence)
 
 OpenCode example: autore start --session opencode --cli opencode
 Language: auto-detected from OS locale (Korean/English)
@@ -363,6 +381,8 @@ while (($#)); do
     --samples-file)   need_value "$@"; SAMPLES_FILE="$2"; shift 2 ;;
     --telegram-token)    need_value "$@"; TELEGRAM_BOT_TOKEN="$2"; shift 2 ;;
     --telegram-chat-id)  need_value "$@"; TELEGRAM_CHAT_ID="$2"; shift 2 ;;
+    --no-auto-update) AUTO_UPDATE=0; shift ;;
+    --auto-update-sec) need_value "$@"; AUTO_UPDATE_SEC="$2"; shift 2 ;;
     --dry-run)        DRY_RUN=1; shift ;;
     --selftest)       SELFTEST=1; shift ;;
     version|--version) echo "autore v${VERSION}"; exit 0 ;;
@@ -620,7 +640,13 @@ watch_loop() {
 
   local last_key="" last_action=0 resends=0
   local tail_text limit_block limit_key now
+  local last_update_check=0   # 0 = 시작하자마자 1회 확인
   while :; do
+    now=$(date +%s)
+    if (( now - last_update_check >= AUTO_UPDATE_SEC )); then
+      last_update_check=$now
+      auto_update_tick   # 새 버전이면 교체 후 exec으로 재시작 (성공 시 돌아오지 않음)
+    fi
     if ! tmux has-session -t "$SESSION" 2>/dev/null; then
       log "$(t log_session_wait "$SESSION" "$POLL_SEC")"
       sleep "$POLL_SEC"; continue
@@ -677,6 +703,7 @@ cmd_start() {
   RETRY_SAME_KEY_SEC="$RETRY_SAME_KEY_SEC" MAX_RESENDS="$MAX_RESENDS" \
   RESUME_MESSAGE="$RESUME_MESSAGE" LOG_FILE="$LOG_FILE" SAMPLES_FILE="$SAMPLES_FILE" \
   PID_FILE="$PID_FILE" CLI_CMD="$CLI_CMD" LC_ALL="${LC_ALL:-${LANG:-}}" \
+  AUTO_UPDATE="$AUTO_UPDATE" AUTO_UPDATE_SEC="$AUTO_UPDATE_SEC" \
   TELEGRAM_BOT_TOKEN="$TELEGRAM_BOT_TOKEN" TELEGRAM_CHAT_ID="$TELEGRAM_CHAT_ID" \
     nohup "$SCRIPT_PATH" run --session "$SESSION" "${extra[@]+"${extra[@]}"}" \
       >>/dev/null 2>>"$LOG_FILE" &
@@ -805,21 +832,38 @@ ver_ge() {
   (( a3 >= b3 ))
 }
 
+# fetch_remote <outfile> — 원격 스크립트 다운로드 후 버전 출력 (실패 시 rc 1)
+fetch_remote() {
+  curl -fsSL "$REPO_RAW/autore.sh" -o "$1" 2>/dev/null || return 1
+  local rv
+  rv=$(sed -n 's/^VERSION="\([^"]*\)".*/\1/p' "$1" | head -n 1)
+  [[ -n $rv ]] || return 1
+  printf '%s\n' "$rv"
+}
+
+# replace_with <file> — 검증(문법+자가진단) 후 백업과 함께 교체 (실패 시 rc 1, 백업 복원)
+replace_with() {
+  bash -n "$1" || return 1
+  bash "$1" --selftest >/dev/null 2>&1 || return 1
+  [[ -w $SCRIPT_PATH ]] || return 1
+  cp "$SCRIPT_PATH" "$SCRIPT_PATH.bak" || return 1
+  if cp "$1" "$SCRIPT_PATH"; then
+    chmod +x "$SCRIPT_PATH"
+    return 0
+  fi
+  cp "$SCRIPT_PATH.bak" "$SCRIPT_PATH"
+  return 1
+}
+
 cmd_update() {
   command -v curl >/dev/null 2>&1 || { echo "$(t err_no_curl)" >&2; exit 1; }
 
   local tmp remote_ver
   tmp=$(mktemp)
   echo "$(t upd_checking "$REPO_RAW/autore.sh")"
-  if ! curl -fsSL "$REPO_RAW/autore.sh" -o "$tmp"; then
+  if ! remote_ver=$(fetch_remote "$tmp"); then
     rm -f "$tmp"
     echo "$(t upd_err_fetch)" >&2
-    exit 1
-  fi
-  remote_ver=$(sed -n 's/^VERSION="\([^"]*\)".*/\1/p' "$tmp" | head -n 1)
-  if [[ -z $remote_ver ]]; then
-    rm -f "$tmp"
-    echo "$(t upd_err_nover)" >&2
     exit 1
   fi
 
@@ -866,6 +910,37 @@ cmd_update() {
   echo "$(t upd_done "$VERSION" "$remote_ver" "$SCRIPT_PATH.bak")"
   (( was_running )) && echo "$(t upd_restart)"
   exit 0
+}
+
+# auto_update_tick — watch_loop에서 주기적으로 호출.
+# 새 버전이 있으면 검증 후 교체하고 exec으로 자기 자신을 새 코드로 재시작한다.
+# (exec은 같은 PID로 새 프로세스 이미지를 로드하므로 PID 파일이 그대로 유효하고,
+#  실행 중인 스크립트를 덮어쓰는 문제도 생기지 않는다)
+auto_update_tick() {
+  (( AUTO_UPDATE && ! DRY_RUN )) || return 0
+  command -v curl >/dev/null 2>&1 || return 0
+  local tmp rv
+  tmp=$(mktemp)
+  if ! rv=$(fetch_remote "$tmp"); then
+    rm -f "$tmp"
+    log "$(t log_autoupdate_fetch_fail)"
+    return 0
+  fi
+  if ! ver_ge "$VERSION" "$rv"; then
+    log "$(t log_autoupdate_found "$VERSION" "$rv")"
+    if replace_with "$tmp"; then
+      rm -f "$tmp"
+      log "$(t log_autoupdate_done "$rv")"
+      notify_telegram "$(t tg_autoupdate "$VERSION" "$rv")"
+      local extra=()
+      (( DRY_RUN )) && extra+=(--dry-run)
+      exec "$SCRIPT_PATH" run --session "$SESSION" "${extra[@]+"${extra[@]}"}"
+    else
+      log "$(t log_autoupdate_fail)"
+    fi
+  fi
+  rm -f "$tmp"
+  return 0
 }
 
 #--- 디스패치 --------------------------------------------------------------------
