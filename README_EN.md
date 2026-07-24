@@ -95,7 +95,8 @@ claude-auto-resume stop      # stop watching
 | `run [options]` | Foreground watcher (for debugging) |
 | `update [--check]` | Self-update to the latest version (`--check`: check only) |
 | `--selftest` | Parser unit tests |
-| `--version` | Print version |
+| `version` | Print version (same as `--version`) |
+| `help` | Print usage (same as `-h`, `--help`) |
 
 ## Options
 

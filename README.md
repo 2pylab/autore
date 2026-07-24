@@ -94,7 +94,8 @@ claude-auto-resume stop      # 감시 중지
 | `run [옵션]` | 포그라운드 감시 (디버깅용) |
 | `update [--check]` | 최신 버전으로 자동 업데이트 (`--check`: 확인만) |
 | `--selftest` | 리셋 시각 파서 단위 테스트 |
-| `--version` | 버전 출력 |
+| `version` | 버전 출력 (`--version`과 동일) |
+| `help` | 도움말 출력 (`-h`, `--help`와 동일) |
 
 ## 옵션
 

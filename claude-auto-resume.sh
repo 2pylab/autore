@@ -16,7 +16,7 @@
 #===============================================================================
 set -uo pipefail
 
-VERSION="1.1.1"
+VERSION="1.1.2"
 REPO_RAW="https://raw.githubusercontent.com/2pylab/claude-auto-resume/main"
 
 #--- 스크립트 절대 경로 (macOS 호환: readlink -f 미사용) -------------------------
@@ -64,7 +64,8 @@ claude-auto-resume v${VERSION} — Claude Code 사용량 제한 자동 재개 �
   claude-auto-resume run [옵션]     포그라운드 감시 (디버깅용)
   claude-auto-resume update [--check] 최신 버전으로 업데이트 (--check: 확인만)
   claude-auto-resume --selftest     리셋 시각 파서 단위 테스트
-  claude-auto-resume --version      버전 출력
+  claude-auto-resume version        버전 출력 (--version 도 동일)
+  claude-auto-resume help           이 도움말 출력 (-h, --help 도 동일)
 
 옵션 (start / run):
   --session NAME      감시할 tmux 세션명            (기본: claude)
@@ -117,8 +118,8 @@ while (($#)); do
     --telegram-chat-id)  need_value "$@"; TELEGRAM_CHAT_ID="$2"; shift 2 ;;
     --dry-run)        DRY_RUN=1; shift ;;
     --selftest)       SELFTEST=1; shift ;;
-    --version)        echo "claude-auto-resume v${VERSION}"; exit 0 ;;
-    -h|--help)        usage 0 ;;
+    version|--version) echo "claude-auto-resume v${VERSION}"; exit 0 ;;
+    help|-h|--help)   usage 0 ;;
     -*)               echo "알 수 없는 옵션: $1" >&2; usage 1 ;;
     *)                SESSION="$1"; shift ;;  # 위치 인자 = 세션명 (하위호환)
   esac
