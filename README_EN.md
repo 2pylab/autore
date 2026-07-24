@@ -19,6 +19,7 @@ It periodically checks the screen of an AI CLI session running in tmux. When it 
 - 📨 **Telegram notifications** — bot alerts on limit detection / resume / retry (optional)
 - 🧪 **Built-in self-test** — `--selftest` runs 16 parser unit tests
 - 🐧🍎 **Linux + macOS** — bash 3.2 compatible; macOS only needs coreutils
+- 🌐 **Bilingual output** — CLI messages, logs, and Telegram alerts follow the OS locale (Korean/English)
 - 📦 **One-line install** — installer with dependency checks
 
 ## Requirements

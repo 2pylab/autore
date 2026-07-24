@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 #===============================================================================
 # autore — AI CLI 사용량 제한 자동 재개 도구 (auto-resume / retry / restart)
+# English: watches AI CLI sessions (Claude Code, OpenCode, ...) and auto-resumes
+#          work after usage-limit resets.
 #
 # Claude Code, OpenCode 등 AI CLI의 사용량 제한 메시지를 감지하면
 # 리셋 시각까지 대기한 뒤, tmux 세션에 재개 메시지를 자동 입력해
@@ -13,16 +15,204 @@
 #   autore stop      # 감시 중지
 #
 # 지원 플랫폼: Linux, macOS (macOS는 GNU coreutils 필요 — README 참조)
+# 출력 언어: OS 로케일 자동 감지 (한국어/English)
 # 상세 도움말: autore help
 #===============================================================================
 set -uo pipefail
 
-VERSION="2.0.0"
+VERSION="2.1.0"
 REPO_RAW="https://raw.githubusercontent.com/2pylab/autore/main"
 
 #--- 스크립트 절대 경로 (macOS 호환: readlink -f 미사용) -------------------------
 SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" >/dev/null 2>&1 && pwd -P)
 SCRIPT_PATH="$SCRIPT_DIR/$(basename -- "$0")"
+
+#--- 로케일 감지 — 한국어 로케일이면 한국어, 그 외에는 영어 -----------------------
+case "${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}" in
+  ko*) TSFX=KO ;;
+  *)   TSFX=EN ;;
+esac
+
+# t <key> [printf 인자...] — 현재 로케일의 메시지 출력 (누락 시 한국어 → 키 순 폴 백)
+t() {
+  local v="MSG_${TSFX}_$1" fmt
+  fmt="${!v:-}"
+  if [[ -z $fmt && $TSFX != KO ]]; then v="MSG_KO_$1"; fmt="${!v:-}"; fi
+  [[ -z $fmt ]] && fmt="$1"
+  shift
+  if (($#)); then printf "$fmt" "$@"; else printf '%s' "$fmt"; fi
+}
+
+#===============================================================================
+# 메시지 카탈로그 (한국어 / English)
+#===============================================================================
+#--- 오류/공통 ---
+MSG_KO_err_need_value="오류: '%s' 옵션에 값이 필요합니다"
+MSG_EN_err_need_value="error: option '%s' requires a value"
+MSG_KO_err_unknown_opt="알 수 없는 옵션: %s"
+MSG_EN_err_unknown_opt="unknown option: %s"
+MSG_KO_err_no_gnu_date=$'오류: GNU date를 찾을 수 없습니다.\n  - Linux: coreutils 패키지 (대부분 기본 포함)\n  - macOS: brew install coreutils  (gdate 명령이 생깁니다)'
+MSG_EN_err_no_gnu_date=$'error: GNU date not found.\n  - Linux: coreutils package (preinstalled on most systems)\n  - macOS: brew install coreutils  (provides the gdate command)'
+MSG_KO_err_no_tmux="오류: tmux가 설치되어 있지 않습니다"
+MSG_EN_err_no_tmux="error: tmux is not installed"
+MSG_KO_err_cli_not_found="오류: '%s' CLI를 찾을 수 없습니다"
+MSG_EN_err_cli_not_found="error: '%s' CLI not found"
+MSG_KO_warn_cli_not_found="경고: '%s' CLI를 찾을 수 없습니다 — 세션 자동 생성이 실패할 수 있습니다"
+MSG_EN_warn_cli_not_found="warning: '%s' CLI not found — automatic session creation may fail"
+MSG_KO_err_no_curl="오류: curl이 필요합니다"
+MSG_EN_err_no_curl="error: curl is required"
+
+#--- 로그/텔레그램 ---
+MSG_KO_log_tg_no_curl="텔레그램 알림 실패: curl 없음"
+MSG_EN_log_tg_no_curl="Telegram notification failed: curl not found"
+MSG_KO_log_tg_sent="텔레그램 알림 전송됨"
+MSG_EN_log_tg_sent="Telegram notification sent"
+MSG_KO_log_tg_failed="텔레그램 알림 전송 실패 (네트워크/토큰/채팅 ID 확인)"
+MSG_EN_log_tg_failed="Telegram notification failed (check network/token/chat ID)"
+MSG_KO_log_watch_stop="감시 종료"
+MSG_EN_log_watch_stop="watcher stopped"
+MSG_KO_log_session_create="tmux 세션 '%s'이 없어 새로 만들고 '%s'를 시작합니다 (접속: %s attach)"
+MSG_EN_log_session_create="tmux session '%s' not found — creating it and starting '%s' (attach: %s attach)"
+MSG_KO_log_session_create_fail="세션 생성 실패"
+MSG_EN_log_session_create_fail="failed to create session"
+MSG_KO_log_watch_start="감시 시작: 세션='%s' 주기=%ss 버퍼=%ss dry_run=%s"
+MSG_EN_log_watch_start="watch started: session='%s' poll=%ss buffer=%ss dry_run=%s"
+MSG_KO_log_limit_detected="제한 감지 — 리셋 %s, 버퍼 포함 %s에 재개 예정"
+MSG_EN_log_limit_detected="limit detected — reset at %s, resuming at %s (incl. buffer)"
+MSG_KO_log_session_gone="대기 중 세션 사라짐"
+MSG_EN_log_session_gone="session disappeared while waiting"
+MSG_KO_log_limit_noparse="제한 감지 — 리셋 시각 파싱 불가(rc=%s, 샘플 기록됨: %s), %s초 후 재개 시도"
+MSG_EN_log_limit_noparse="limit detected — could not parse reset time (rc=%s, sample saved: %s); attempting resume in %ss"
+MSG_KO_log_resume_send="재개 메시지 전송: '%s'"
+MSG_EN_log_resume_send="sending resume message: '%s'"
+MSG_KO_log_dryrun_send="[DRY-RUN] '%s' 전송 생략"
+MSG_EN_log_dryrun_send="[DRY-RUN] skipped sending '%s'"
+MSG_KO_log_dryrun_session="[DRY-RUN] 세션 '%s' 없음 — 생성 생략"
+MSG_EN_log_dryrun_session="[DRY-RUN] session '%s' not found — skipping creation"
+MSG_KO_log_session_wait="세션 '%s' 없음 — %s초 후 재확인 (세션이 다시 생기면 자동 감시 재개)"
+MSG_EN_log_session_wait="session '%s' not found — rechecking in %ss (watching resumes automatically when it reappears)"
+MSG_KO_log_resend="같은 제한 메시지 지속 — 재개 메시지 재전송 (%s/%s)"
+MSG_EN_log_resend="same limit message persists — resending resume message (%s/%s)"
+MSG_KO_log_limit_cleared="제한 메시지 사라짐 — 정상 상태로 복귀"
+MSG_EN_log_limit_cleared="limit message cleared — back to normal"
+MSG_KO_tg_start=$'[autore] 감시 시작 (v%s)\n호스트: %s\n세션: %s — 텔레그램 연동이 정상적으로 연결되었습니다'
+MSG_EN_tg_start=$'[autore] Watcher started (v%s)\nHost: %s\nSession: %s — Telegram integration connected successfully'
+MSG_KO_tg_limit=$'[autore] 사용량 제한 감지\n리셋: %s\n재개 예정: %s'
+MSG_EN_tg_limit=$'[autore] Usage limit detected\nReset: %s\nResume at: %s'
+MSG_KO_tg_limit_noparse=$'[autore] 사용량 제한 감지 (리셋 시각 파싱 실패)\n%s초 후 재개 시도 예정'
+MSG_EN_tg_limit_noparse=$'[autore] Usage limit detected (could not parse reset time)\nWill attempt resume in %ss'
+MSG_KO_tg_resumed="[autore] 작업 재개 — '%s' 전송 완료"
+MSG_EN_tg_resumed="[autore] Resumed — '%s' sent"
+MSG_KO_tg_resend="[autore] 재개 메시지 재전송 (%s/%s)"
+MSG_EN_tg_resend="[autore] Resent resume message (%s/%s)"
+MSG_KO_tg_test="[autore] 테스트 메시지 — 텔레그램 연동이 정상입니다 (v%s)"
+MSG_EN_tg_test="[autore] Test message — Telegram integration is working (v%s)"
+
+#--- 샘플/자가진단 ---
+MSG_KO_sample_failed="parsed: FAILED — 파서 업데이트 필요 (GitHub 이슈로 제보 환영)"
+MSG_EN_sample_failed="parsed: FAILED — parser needs an update (GitHub issues welcome)"
+MSG_KO_st_note_unexpected="(실패해야 하는데 rc=0, out=%s)"
+MSG_EN_st_note_unexpected="(expected failure but rc=0, out=%s)"
+MSG_KO_st_summary_pass="== 전체 통과 =="
+MSG_EN_st_summary_pass="== all tests passed =="
+MSG_KO_st_summary_fail="== 실패 있음 =="
+MSG_EN_st_summary_fail="== some tests failed =="
+
+#--- start/stop/status/logs/attach ---
+MSG_KO_out_already_running="이미 감시 중입니다 (PID %s) — 상태 확인: %s status"
+MSG_EN_out_already_running="already watching (PID %s) — check: %s status"
+MSG_KO_err_watch_died="오류: 감시 프로세스가 즉시 종료되었습니다 — 로그 확인: %s"
+MSG_EN_err_watch_died="error: watcher exited immediately — check log: %s"
+MSG_KO_out_started="✓ 백그라운드 감시를 시작했습니다 (PID %s)"
+MSG_EN_out_started="✓ background watcher started (PID %s)"
+MSG_KO_out_attach_hint="  - 세션 접속: %s attach   (또는 tmux attach -t %s)"
+MSG_EN_out_attach_hint="  - attach: %s attach   (or tmux attach -t %s)"
+MSG_KO_out_status_hint="  - 상태 확인: %s status"
+MSG_EN_out_status_hint="  - status: %s status"
+MSG_KO_out_stop_hint="  - 감시 중지: %s stop"
+MSG_EN_out_stop_hint="  - stop: %s stop"
+MSG_KO_out_dryrun_warn="  ⚠ dry-run 모드: 실제 메시지는 전송되지 않습니다"
+MSG_EN_out_dryrun_warn="  ⚠ dry-run mode: no messages will actually be sent"
+MSG_KO_out_stopped="✓ 감시를 중지했습니다"
+MSG_EN_out_stopped="✓ watcher stopped"
+MSG_KO_out_not_running="실행 중인 감시 프로세스가 없습니다"
+MSG_EN_out_not_running="no watcher is running"
+MSG_KO_st_header_state="== 현재 상태 (실시간) =="
+MSG_EN_st_header_state="== current state (live) =="
+MSG_KO_st_header_log="== 최근 로그 (과거 기록) =="
+MSG_EN_st_header_log="== recent logs (history) =="
+MSG_KO_st_l_watch="감시:          "
+MSG_EN_st_l_watch="Watcher:       "
+MSG_KO_st_l_session="tmux 세션:     "
+MSG_EN_st_l_session="tmux session:  "
+MSG_KO_st_l_tg="텔레그램 알림: "
+MSG_EN_st_l_tg="Telegram:      "
+MSG_KO_st_running="실행 중"
+MSG_EN_st_running="running"
+MSG_KO_st_stopped="중지됨 — start로 시작"
+MSG_EN_st_stopped="stopped — run: autore start"
+MSG_KO_st_yes="있음"
+MSG_EN_st_yes="present"
+MSG_KO_st_no="없음"
+MSG_EN_st_no="missing"
+MSG_KO_st_no_hint="(%s — start/attach 시 자동 생성)"
+MSG_EN_st_no_hint="(%s — auto-created on start/attach)"
+MSG_KO_st_tg_set="설정됨"
+MSG_EN_st_tg_set="configured"
+MSG_KO_st_tg_unset="미설정"
+MSG_EN_st_tg_unset="not configured"
+MSG_KO_st_no_log="(로그 없음)"
+MSG_EN_st_no_log="(no logs)"
+MSG_KO_out_no_logs="(로그 없음: %s)"
+MSG_EN_out_no_logs="(no logs: %s)"
+MSG_KO_out_attach_creating="세션 '%s'이 없어 새로 만들고 '%s'를 시작합니다"
+MSG_EN_out_attach_creating="session '%s' not found — creating it and starting '%s'"
+
+#--- test-telegram ---
+MSG_KO_tt_err_unset=$'오류: 텔레그램이 설정되어 있지 않습니다\n  - 환경변수: export TELEGRAM_BOT_TOKEN=... TELEGRAM_CHAT_ID=...\n  - 또는 옵션: autore test-telegram --telegram-token T --telegram-chat-id C'
+MSG_EN_tt_err_unset=$'error: Telegram is not configured\n  - env vars: export TELEGRAM_BOT_TOKEN=... TELEGRAM_CHAT_ID=...\n  - or options: autore test-telegram --telegram-token T --telegram-chat-id C'
+MSG_KO_tt_sending="텔레그램 테스트 메시지 발송 중... (chat_id: %s)"
+MSG_EN_tt_sending="sending Telegram test message... (chat_id: %s)"
+MSG_KO_tt_fail_net="✗ 발송 실패 — 네트워크 오류:"
+MSG_EN_tt_fail_net="✗ send failed — network error:"
+MSG_KO_tt_success="✓ 발송 성공 — 텔레그램에서 메시지를 확인하세요"
+MSG_EN_tt_success="✓ sent — check the message in Telegram"
+MSG_KO_tt_fail_api="✗ 발송 실패 — 텔레그램 API 응답:"
+MSG_EN_tt_fail_api="✗ send failed — Telegram API response:"
+MSG_KO_tt_hint_401="  힌트: 봇 토큰이 잘못되었습니다 (@BotFather에서 토큰 재확인)"
+MSG_EN_tt_hint_401="  hint: invalid bot token (check the token with @BotFather)"
+MSG_KO_tt_hint_chat="  힌트: 채팅 ID 오류이거나, 봇에게 먼저 아무 메시지나 전송하지 않은 상태입니다"
+MSG_EN_tt_hint_chat="  hint: wrong chat ID, or you have not sent any message to the bot first"
+MSG_KO_tt_hint_blocked="  힌트: 봇이 차단된 상태입니다 — 텔레그램에서 차단 해제 후 다시 시도"
+MSG_EN_tt_hint_blocked="  hint: the bot is blocked — unblock it in Telegram and retry"
+
+#--- update ---
+MSG_KO_upd_checking="최신 버전 확인 중: %s"
+MSG_EN_upd_checking="checking for the latest version: %s"
+MSG_KO_upd_err_fetch="오류: 최신 버전을 가져오지 못했습니다 (네트워크 확인)"
+MSG_EN_upd_err_fetch="error: failed to fetch the latest version (check network)"
+MSG_KO_upd_err_nover="오류: 버전 정보를 읽지 못했습니다"
+MSG_EN_upd_err_nover="error: could not read version info"
+MSG_KO_upd_latest="✓ 이미 최신 버전입니다 (v%s)"
+MSG_EN_upd_latest="✓ already up to date (v%s)"
+MSG_KO_upd_found="새 버전 발견: v%s → v%s"
+MSG_EN_upd_found="new version available: v%s → v%s"
+MSG_KO_upd_err_verify="오류: 다운로드한 파일이 검증에 실패했습니다 — 업데이트 중단"
+MSG_EN_upd_err_verify="error: downloaded file failed verification — update aborted"
+MSG_KO_upd_err_nowrite="오류: %s 에 쓰기 권한이 없습니다 (sudo 또는 install.sh 재설치)"
+MSG_EN_upd_err_nowrite="error: no write permission for %s (use sudo or reinstall via install.sh)"
+MSG_KO_upd_stopping="감시 프로세스 중지 중..."
+MSG_EN_upd_stopping="stopping watcher..."
+MSG_KO_upd_err_replace="오류: 파일 교체 실패 — 백업으로 복원했습니다"
+MSG_EN_upd_err_replace="error: failed to replace file — restored from backup"
+MSG_KO_upd_done="✓ 업데이트 완료: v%s → v%s (백업: %s)"
+MSG_EN_upd_done="✓ update complete: v%s → v%s (backup: %s)"
+MSG_KO_upd_restart="  감시가 중지된 상태입니다 — 다시 시작: autore start"
+MSG_EN_upd_restart="  the watcher is stopped — restart: autore start"
+
+#--- 기본 재개 메시지 (AI CLI 세션에 입력되는 문구) ---
+MSG_KO_default_resume_msg="계속 이어서 진행해줘"
+MSG_EN_default_resume_msg="Keep going and continue"
 
 #--- 기본 설정값 (환경변수로 재정의 가능, CLI 옵션이 최우선) ----------------------
 # 구버전(claude-auto-resume) 상태 파일 하위호환 — 새 파일이 없고 구 파일만 있으면 구 파일 사용
@@ -35,7 +225,7 @@ BUFFER_SEC="${BUFFER_SEC:-90}"
 FALLBACK_SEC="${FALLBACK_SEC:-900}"
 RETRY_SAME_KEY_SEC="${RETRY_SAME_KEY_SEC:-600}"
 MAX_RESENDS="${MAX_RESENDS:-2}"
-RESUME_MESSAGE="${RESUME_MESSAGE:-계속 이어서 진행해줘}"
+RESUME_MESSAGE="${RESUME_MESSAGE:-$(t default_resume_msg)}"
 LOG_FILE="${LOG_FILE:-$(_legacy_file "$HOME/.autore.log" "$HOME/.claude-auto-resume.log")}"
 SAMPLES_FILE="${SAMPLES_FILE:-$(_legacy_file "$HOME/.autore-samples.log" "$HOME/.claude-auto-resume-samples.log")}"
 PID_FILE="${PID_FILE:-$(_legacy_file "$HOME/.autore.pid" "$HOME/.claude-auto-resume.pid")}"
@@ -59,7 +249,8 @@ CMD=""
 DATE=""
 
 usage() {
-  cat <<EOF
+  if [[ $TSFX == KO ]]; then
+    cat <<EOF
 autore v${VERSION} — AI CLI 사용량 제한 자동 재개 도구
 
 사용법:
@@ -95,15 +286,59 @@ RETRY_SAME_KEY_SEC, MAX_RESENDS, RESUME_MESSAGE, LOG_FILE, SAMPLES_FILE,
 TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID (CLI 옵션이 우선)
 
 오픈코드 사용 예: autore start --session opencode --cli opencode
+출력 언어: OS 로케일 자동 감지 (한국어/영어)
 
 ※ 텔레그램 토큰은 CLI 인자로 넘기면 프로세스 목록(ps)에 노출될 수 있으니
   환경변수(예: ~/.bashrc에 export) 사용을 권장합니다.
 EOF
+  else
+    cat <<EOF
+autore v${VERSION} — auto-resume watcher for AI CLI usage limits
+
+Usage:
+  autore start [options]   start background watcher (creates session if missing)
+  autore stop              stop the watcher
+  autore status            watcher state + recent logs
+  autore logs [-f]         show logs (-f: follow)
+  autore attach            attach to the AI CLI tmux session
+  autore run [options]     foreground watcher (for debugging)
+  autore update [--check]  update to the latest version (--check: check only)
+  autore test-telegram     send a Telegram test message
+  autore --selftest        reset-time parser unit tests
+  autore version           print version (same as --version)
+  autore help              print this help (same as -h, --help)
+
+Options (start / run):
+  --session NAME      tmux session to watch            (default: claude)
+  --cli CMD           AI CLI to launch on session create (default: claude, e.g. opencode)
+  --poll SEC          screen check interval            (default: 30)
+  --buffer SEC        extra wait after reset time      (default: 90)
+  --fallback SEC      retry delay when time parsing fails (default: 900)
+  --retry SEC         resend interval for same limit message (default: 600)
+  --max-resends N     max resends for same limit message (default: 2)
+  --message TEXT      message typed after reset        (default: Keep going and continue)
+  --log-file PATH     log file                         (default: ~/.autore.log)
+  --samples-file PATH limit-message sample file        (default: ~/.autore-samples.log)
+  --telegram-token T  Telegram bot token (enables alerts with chat ID)
+  --telegram-chat-id C Telegram chat ID
+  --dry-run           log only, never send
+
+Also configurable via env vars: CLI_CMD, POLL_SEC, BUFFER_SEC, FALLBACK_SEC,
+RETRY_SAME_KEY_SEC, MAX_RESENDS, RESUME_MESSAGE, LOG_FILE, SAMPLES_FILE,
+TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID (CLI options take precedence)
+
+OpenCode example: autore start --session opencode --cli opencode
+Language: auto-detected from OS locale (Korean/English)
+
+Note: passing the Telegram token as a CLI argument can expose it in the
+  process list (ps) — environment variables (e.g. export in ~/.bashrc) are recommended.
+EOF
+  fi
   exit "${1:-0}"
 }
 
 #--- 인자 파싱 -------------------------------------------------------------------
-need_value() { [[ $# -ge 2 ]] || { echo "오류: '$1' 옵션에 값이 필요합니다" >&2; exit 1; }; }
+need_value() { [[ $# -ge 2 ]] || { echo "$(t err_need_value "$1")" >&2; exit 1; }; }
 
 while (($#)); do
   case "$1" in
@@ -132,7 +367,7 @@ while (($#)); do
     --selftest)       SELFTEST=1; shift ;;
     version|--version) echo "autore v${VERSION}"; exit 0 ;;
     help|-h|--help)   usage 0 ;;
-    -*)               echo "알 수 없는 옵션: $1" >&2; usage 1 ;;
+    -*)               echo "$(t err_unknown_opt "$1")" >&2; usage 1 ;;
     *)                SESSION="$1"; shift ;;  # 위치 인자 = 세션명 (하위호환)
   esac
 done
@@ -153,9 +388,7 @@ detect_gnu_date() {
 require_date() {
   [[ -n $DATE ]] && return 0
   DATE=$(detect_gnu_date) && return 0
-  echo "오류: GNU date를 찾을 수 없습니다." >&2
-  echo "  - Linux: coreutils 패키지 (대부분 기본 포함)" >&2
-  echo "  - macOS: brew install coreutils  (gdate 명령이 생깁니다)" >&2
+  echo "$(t err_no_gnu_date)" >&2
   exit 1
 }
 
@@ -164,13 +397,13 @@ log() { printf '%s %s\n' "$(date '+%F %T')" "$*" | tee -a "$LOG_FILE"; }
 # 텔레그램 알림 — TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID 둘 다 설정된 경우에만 동작
 notify_telegram() { # <message>
   [[ -n $TELEGRAM_BOT_TOKEN && -n $TELEGRAM_CHAT_ID ]] || return 0
-  command -v curl >/dev/null 2>&1 || { log "텔레그램 알림 실패: curl 없음"; return 0; }
+  command -v curl >/dev/null 2>&1 || { log "$(t log_tg_no_curl)"; return 0; }
   if curl -sS -m 10 -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
       --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
       --data-urlencode "text=$1" >/dev/null 2>&1; then
-    log "텔레그램 알림 전송됨"
+    log "$(t log_tg_sent)"
   else
-    log "텔레그램 알림 전송 실패 (네트워크/토큰/채팅 ID 확인)"
+    log "$(t log_tg_failed)"
   fi
 }
 
@@ -231,7 +464,7 @@ parse_date_expr() { # <text> <now_epoch>
     # 연도 경계 등으로 과거가 나오면 다음 해로 재해석
     epoch=$("$DATE" -d "$cand next year" +%s 2>/dev/null) || return 1
   fi
-  # 주간 제한까지 고려해 최대 8일 이내만 유효
+  # 주간 제한까지 고려해 최대 8일 이내이면 유효
   (( epoch >= now - GRACE_SEC && epoch <= now + MAX_FUTURE_DATE_SEC )) || return 2
   printf '%s\n' "$epoch"
 }
@@ -266,7 +499,7 @@ collect_sample() { # <block> <rc> [epoch]
     if (( rc == 0 )) && [[ -n $epoch ]]; then
       printf 'parsed: %s\n' "$("$DATE" -d "@$epoch" '+%F %T')"
     else
-      printf 'parsed: FAILED — 파서 업데이트 필요 (GitHub 이슈로 제보 환영)\n'
+      printf '%s\n' "$(t sample_failed)"
     fi
     printf '\n'
   } >> "$SAMPLES_FILE"
@@ -287,7 +520,7 @@ selftest() {
       if (( rc != 0 )); then
         echo "PASS: $desc"
       else
-        echo "FAIL: $desc (실패해야 하는데 rc=0, out=$out)"; fail=1
+        echo "FAIL: $desc $(t st_note_unexpected "$out")"; fail=1
       fi
     else
       exp_e=$("$DATE" -d "$exp" +%s)
@@ -319,7 +552,7 @@ selftest() {
   #--- 줄바꿈(화면 wrap) ---
   check "줄바꿈 메시지"   $'Your limit will reset at\n3:30pm'                        "2026-07-24 09:54" "2026-07-24 15:30"
 
-  if (( fail == 0 )); then echo "== 전체 통과 =="; else echo "== 실패 있음 =="; fi
+  if (( fail == 0 )); then echo "$(t st_summary_pass)"; else echo "$(t st_summary_fail)"; fi
   exit "$fail"
 }
 
@@ -338,7 +571,7 @@ wait_until() { # <target_epoch> — 30초 단위로 끊어 대기 (세션 생존
 
 send_resume() {
   if (( DRY_RUN )); then
-    log "[DRY-RUN] '$RESUME_MESSAGE' 전송 생략"
+    log "$(t log_dryrun_send "$RESUME_MESSAGE")"
     return 0
   fi
   tmux send-keys -t "$SESSION" -l -- "$RESUME_MESSAGE"
@@ -347,53 +580,49 @@ send_resume() {
 }
 
 handle_limit() { # <limit_block>
-  local block="$1" now target rc reset_desc
+  local block="$1" now target rc reset_desc resume_at
   now=$(date +%s)
   target=$(parse_reset_epoch "$block" "$now"); rc=$?
   collect_sample "$block" "$rc" "${target:-}"
   if (( rc == 0 )); then
     reset_desc=$("$DATE" -d "@$target" '+%m-%d %H:%M')
     target=$((target + BUFFER_SEC))
-    log "제한 감지 — 리셋 ${reset_desc}, 버퍼 포함 $("$DATE" -d "@$target" '+%H:%M:%S')에 재개 예정"
-    notify_telegram "[autore] 사용량 제한 감지
-리셋: ${reset_desc}
-재개 예정: $("$DATE" -d "@$target" '+%H:%M:%S')"
-    wait_until "$target" || { log "대기 중 세션 사라짐"; return 1; }
+    resume_at=$("$DATE" -d "@$target" '+%H:%M:%S')
+    log "$(t log_limit_detected "$reset_desc" "$resume_at")"
+    notify_telegram "$(t tg_limit "$reset_desc" "$resume_at")"
+    wait_until "$target" || { log "$(t log_session_gone)"; return 1; }
   else
-    log "제한 감지 — 리셋 시각 파싱 불가(rc=$rc, 샘플 기록됨: $SAMPLES_FILE), ${FALLBACK_SEC}초 후 재개 시도"
-    notify_telegram "[autore] 사용량 제한 감지 (리셋 시각 파싱 실패)
-${FALLBACK_SEC}초 후 재개 시도 예정"
-    wait_until $((now + FALLBACK_SEC)) || { log "대기 중 세션 사라짐"; return 1; }
+    log "$(t log_limit_noparse "$rc" "$SAMPLES_FILE" "$FALLBACK_SEC")"
+    notify_telegram "$(t tg_limit_noparse "$FALLBACK_SEC")"
+    wait_until $((now + FALLBACK_SEC)) || { log "$(t log_session_gone)"; return 1; }
   fi
-  log "재개 메시지 전송: '$RESUME_MESSAGE'"
+  log "$(t log_resume_send "$RESUME_MESSAGE")"
   send_resume
-  notify_telegram "[autore] 작업 재개 — '$RESUME_MESSAGE' 전송 완료"
+  notify_telegram "$(t tg_resumed "$RESUME_MESSAGE")"
 }
 
 watch_loop() {
   require_date
-  command -v tmux >/dev/null 2>&1 || { echo "오류: tmux가 설치되어 있지 않습니다" >&2; exit 1; }
-  trap 'log "감시 종료"; exit 0' INT TERM
+  command -v tmux >/dev/null 2>&1 || { echo "$(t err_no_tmux)" >&2; exit 1; }
+  trap 'log "$(t log_watch_stop)"; exit 0' INT TERM
 
   if ! tmux has-session -t "$SESSION" 2>/dev/null; then
     if (( DRY_RUN )); then
-      log "[DRY-RUN] 세션 '$SESSION' 없음 — 생성 생략"
+      log "$(t log_dryrun_session "$SESSION")"
     else
-      command -v "$CLI_CMD" >/dev/null 2>&1 || { echo "오류: '$CLI_CMD' CLI를 찾을 수 없습니다" >&2; exit 1; }
-      log "tmux 세션 '$SESSION'이 없어 새로 만들고 '$CLI_CMD'를 시작합니다 (접속: $SCRIPT_PATH attach)"
-      tmux new-session -d -s "$SESSION" "$CLI_CMD" || { log "세션 생성 실패"; exit 1; }
+      command -v "$CLI_CMD" >/dev/null 2>&1 || { echo "$(t err_cli_not_found "$CLI_CMD")" >&2; exit 1; }
+      log "$(t log_session_create "$SESSION" "$CLI_CMD" "$SCRIPT_PATH")"
+      tmux new-session -d -s "$SESSION" "$CLI_CMD" || { log "$(t log_session_create_fail)"; exit 1; }
     fi
   fi
-  log "감시 시작: 세션='$SESSION' 주기=${POLL_SEC}s 버퍼=${BUFFER_SEC}s dry_run=$DRY_RUN"
-  notify_telegram "[autore] 감시 시작 (v${VERSION})
-호스트: $(hostname)
-세션: ${SESSION} — 텔레그램 연동이 정상적으로 연결되었습니다"
+  log "$(t log_watch_start "$SESSION" "$POLL_SEC" "$BUFFER_SEC" "$DRY_RUN")"
+  notify_telegram "$(t tg_start "$VERSION" "$(hostname)" "$SESSION")"
 
   local last_key="" last_action=0 resends=0
   local tail_text limit_block limit_key now
   while :; do
     if ! tmux has-session -t "$SESSION" 2>/dev/null; then
-      log "세션 '$SESSION' 없음 — ${POLL_SEC}초 후 재확인 (세션이 다시 생기면 자동 감시 재개)"
+      log "$(t log_session_wait "$SESSION" "$POLL_SEC")"
       sleep "$POLL_SEC"; continue
     fi
 
@@ -410,9 +639,9 @@ watch_loop() {
       if [[ $limit_key == "$last_key" ]]; then
         # 이미 처리한 제한 메시지 — 재개가 안 먹혔을 수 있으니 제한적으로 재전송
         if (( resends < MAX_RESENDS && now - last_action >= RETRY_SAME_KEY_SEC )); then
-          log "같은 제한 메시지 지속 — 재개 메시지 재전송 ($((resends + 1))/${MAX_RESENDS})"
+          log "$(t log_resend $((resends + 1)) "$MAX_RESENDS")"
           send_resume
-          notify_telegram "[autore] 재개 메시지 재전송 ($((resends + 1))/${MAX_RESENDS})"
+          notify_telegram "$(t tg_resend $((resends + 1)) "$MAX_RESENDS")"
           resends=$((resends + 1)); last_action=$now
         fi
       else
@@ -421,7 +650,7 @@ watch_loop() {
         last_action=$(date +%s)
       fi
     else
-      [[ -n $last_key ]] && log "제한 메시지 사라짐 — 정상 상태로 복귀"
+      [[ -n $last_key ]] && log "$(t log_limit_cleared)"
       last_key=""; resends=0
     fi
     sleep "$POLL_SEC"
@@ -434,12 +663,12 @@ watch_loop() {
 is_running() { [[ -f $PID_FILE ]] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; }
 
 cmd_start() {
-  command -v tmux >/dev/null 2>&1 || { echo "오류: tmux가 설치되어 있지 않습니다" >&2; exit 1; }
+  command -v tmux >/dev/null 2>&1 || { echo "$(t err_no_tmux)" >&2; exit 1; }
   require_date
   command -v "$CLI_CMD" >/dev/null 2>&1 || \
-    echo "경고: '$CLI_CMD' CLI를 찾을 수 없습니다 — 세션 자동 생성이 실패할 수 있습니다" >&2
+    echo "$(t warn_cli_not_found "$CLI_CMD")" >&2
   if is_running; then
-    echo "이미 감시 중입니다 (PID $(cat "$PID_FILE")) — 상태 확인: $SCRIPT_PATH status"
+    echo "$(t out_already_running "$(cat "$PID_FILE")" "$SCRIPT_PATH")"
     exit 0
   fi
   local extra=()
@@ -447,22 +676,22 @@ cmd_start() {
   POLL_SEC="$POLL_SEC" BUFFER_SEC="$BUFFER_SEC" FALLBACK_SEC="$FALLBACK_SEC" \
   RETRY_SAME_KEY_SEC="$RETRY_SAME_KEY_SEC" MAX_RESENDS="$MAX_RESENDS" \
   RESUME_MESSAGE="$RESUME_MESSAGE" LOG_FILE="$LOG_FILE" SAMPLES_FILE="$SAMPLES_FILE" \
-  PID_FILE="$PID_FILE" CLI_CMD="$CLI_CMD" \
+  PID_FILE="$PID_FILE" CLI_CMD="$CLI_CMD" LC_ALL="${LC_ALL:-${LANG:-}}" \
   TELEGRAM_BOT_TOKEN="$TELEGRAM_BOT_TOKEN" TELEGRAM_CHAT_ID="$TELEGRAM_CHAT_ID" \
     nohup "$SCRIPT_PATH" run --session "$SESSION" "${extra[@]+"${extra[@]}"}" \
       >>/dev/null 2>>"$LOG_FILE" &
   echo $! > "$PID_FILE"
   sleep 1
   if ! is_running; then
-    echo "오류: 감시 프로세스가 즉시 종료되었습니다 — 로그 확인: $LOG_FILE" >&2
+    echo "$(t err_watch_died "$LOG_FILE")" >&2
     rm -f "$PID_FILE"
     exit 1
   fi
-  echo "✓ 백그라운드 감시를 시작했습니다 (PID $(cat "$PID_FILE"))"
-  echo "  - 세션 접속: $SCRIPT_PATH attach   (또는 tmux attach -t $SESSION)"
-  echo "  - 상태 확인: $SCRIPT_PATH status"
-  echo "  - 감시 중지: $SCRIPT_PATH stop"
-  (( DRY_RUN )) && echo "  ⚠ dry-run 모드: 실제 메시지는 전송되지 않습니다"
+  echo "$(t out_started "$(cat "$PID_FILE")")"
+  echo "$(t out_attach_hint "$SCRIPT_PATH" "$SESSION")"
+  echo "$(t out_status_hint "$SCRIPT_PATH")"
+  echo "$(t out_stop_hint "$SCRIPT_PATH")"
+  (( DRY_RUN )) && echo "$(t out_dryrun_warn)"
   exit 0
 }
 
@@ -470,10 +699,10 @@ cmd_stop() {
   if is_running; then
     kill "$(cat "$PID_FILE")" 2>/dev/null
     rm -f "$PID_FILE"
-    echo "✓ 감시를 중지했습니다"
+    echo "$(t out_stopped)"
   else
     rm -f "$PID_FILE"
-    echo "실행 중인 감시 프로세스가 없습니다"
+    echo "$(t out_not_running)"
   fi
 }
 
@@ -486,49 +715,49 @@ cmd_status() {
   fi
 
   # 현재 상태 — 지금 이 순간의 실시간 검사 결과
-  printf '%s%s== 현재 상태 (실시간) ==%s\n' "$bold" "$cyan" "$reset"
+  printf '%s%s%s%s\n' "$bold" "$cyan" "$(t st_header_state)" "$reset"
   if is_running; then
-    printf '  %s●%s 감시:         %s%s실행 중%s (PID %s)\n' \
-      "$green" "$reset" "$bold" "$green" "$reset" "$(cat "$PID_FILE")"
+    printf '  %s●%s %s%s%s%s (PID %s)\n' \
+      "$green" "$reset" "$(t st_l_watch)" "$bold$green" "$(t st_running)" "$reset" "$(cat "$PID_FILE")"
   else
-    printf '  %s●%s 감시:         %s%s중지됨%s — start로 시작\n' \
-      "$red" "$reset" "$bold" "$red" "$reset"
+    printf '  %s●%s %s%s%s%s\n' \
+      "$red" "$reset" "$(t st_l_watch)" "$bold$red" "$(t st_stopped)" "$reset"
   fi
   if tmux has-session -t "$SESSION" 2>/dev/null; then
-    printf '  %s●%s tmux 세션:    %s%s있음%s (%s)\n' \
-      "$green" "$reset" "$bold" "$green" "$reset" "$SESSION"
+    printf '  %s●%s %s%s%s%s (%s)\n' \
+      "$green" "$reset" "$(t st_l_session)" "$bold$green" "$(t st_yes)" "$reset" "$SESSION"
   else
-    printf '  %s●%s tmux 세션:    %s%s없음%s (%s — start/attach 시 자동 생성)\n' \
-      "$yellow" "$reset" "$bold" "$yellow" "$reset" "$SESSION"
+    printf '  %s●%s %s%s%s%s %s\n' \
+      "$yellow" "$reset" "$(t st_l_session)" "$bold$yellow" "$(t st_no)" "$reset" "$(t st_no_hint "$SESSION")"
   fi
   if [[ -n $TELEGRAM_BOT_TOKEN && -n $TELEGRAM_CHAT_ID ]]; then
-    printf '  %s●%s 텔레그램 알림: %s%s설정됨%s (chat_id: %s)\n' \
-      "$green" "$reset" "$bold" "$green" "$reset" "$TELEGRAM_CHAT_ID"
+    printf '  %s●%s %s%s%s%s (chat_id: %s)\n' \
+      "$green" "$reset" "$(t st_l_tg)" "$bold$green" "$(t st_tg_set)" "$reset" "$TELEGRAM_CHAT_ID"
   else
-    printf '  %s●%s 텔레그램 알림: %s미설정%s\n' "$dim" "$reset" "$dim" "$reset"
+    printf '  %s●%s %s%s%s%s\n' "$dim" "$reset" "$(t st_l_tg)" "$dim" "$(t st_tg_unset)" "$reset"
   fi
 
   # 최근 로그 — 과거 기록일 뿐, 현재 상태는 위 섹션 참조
-  printf '\n%s%s== 최근 로그 (과거 기록) ==%s %s[%s]%s\n' \
-    "$bold" "$cyan" "$reset" "$dim" "$LOG_FILE" "$reset"
+  printf '\n%s%s%s%s %s[%s]%s\n' \
+    "$bold" "$cyan" "$(t st_header_log)" "$reset" "$dim" "$LOG_FILE" "$reset"
   if [[ -f $LOG_FILE ]]; then
     tail -n 5 "$LOG_FILE" | while IFS= read -r line; do
       printf '  %s%s%s\n' "$dim" "$line" "$reset"
     done
   else
-    printf '  %s(로그 없음)%s\n' "$dim" "$reset"
+    printf '  %s%s%s\n' "$dim" "$(t st_no_log)" "$reset"
   fi
 }
 
 cmd_logs() {
-  [[ -f $LOG_FILE ]] || { echo "(로그 없음: $LOG_FILE)"; exit 0; }
+  [[ -f $LOG_FILE ]] || { echo "$(t out_no_logs "$LOG_FILE")"; exit 0; }
   if (( LOGS_FOLLOW )); then tail -f "$LOG_FILE"; else tail -n 30 "$LOG_FILE"; fi
 }
 
 cmd_attach() {
   if ! tmux has-session -t "$SESSION" 2>/dev/null; then
-    echo "세션 '$SESSION'이 없어 새로 만들고 '$CLI_CMD'를 시작합니다"
-    tmux new-session -d -s "$SESSION" "$CLI_CMD" || { echo "세션 생성 실패" >&2; exit 1; }
+    echo "$(t out_attach_creating "$SESSION" "$CLI_CMD")"
+    tmux new-session -d -s "$SESSION" "$CLI_CMD" || { echo "$(t log_session_create_fail)" >&2; exit 1; }
   fi
   exec tmux attach -t "$SESSION"
 }
@@ -536,32 +765,30 @@ cmd_attach() {
 # 텔레그램 연동 테스트 — 설정값으로 실제 메시지를 전송하고 결과를 상세히 보고
 cmd_test_telegram() {
   if [[ -z $TELEGRAM_BOT_TOKEN || -z $TELEGRAM_CHAT_ID ]]; then
-    echo "오류: 텔레그램이 설정되어 있지 않습니다" >&2
-    echo "  - 환경변수: export TELEGRAM_BOT_TOKEN=... TELEGRAM_CHAT_ID=..." >&2
-    echo "  - 또는 옵션: autore test-telegram --telegram-token T --telegram-chat-id C" >&2
+    echo "$(t tt_err_unset)" >&2
     exit 1
   fi
-  command -v curl >/dev/null 2>&1 || { echo "오류: curl이 필요합니다" >&2; exit 1; }
+  command -v curl >/dev/null 2>&1 || { echo "$(t err_no_curl)" >&2; exit 1; }
 
-  echo "텔레그램 테스트 메시지 발송 중... (chat_id: $TELEGRAM_CHAT_ID)"
+  echo "$(t tt_sending "$TELEGRAM_CHAT_ID")"
   local resp
   if ! resp=$(curl -sS -m 10 -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
       --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
-      --data-urlencode "text=[autore] 테스트 메시지 — 텔레그램 연동이 정상입니다 (v${VERSION})" 2>&1); then
-    echo "✗ 발송 실패 — 네트워크 오류:" >&2
+      --data-urlencode "text=$(t tg_test "$VERSION")" 2>&1); then
+    echo "$(t tt_fail_net)" >&2
     echo "  $resp" >&2
     exit 1
   fi
   if [[ $resp == *'"ok":true'* ]]; then
-    echo "✓ 발송 성공 — 텔레그램에서 메시지를 확인하세요"
+    echo "$(t tt_success)"
     exit 0
   fi
-  echo "✗ 발송 실패 — 텔레그램 API 응답:" >&2
+  echo "$(t tt_fail_api)" >&2
   echo "  $resp" >&2
   case $resp in
-    *'"error_code":401'*) echo "  힌트: 봇 토큰이 잘못되었습니다 (@BotFather에서 토큰 재확인)" >&2 ;;
-    *'chat not found'*)   echo "  힌트: 채팅 ID 오류이거나, 봇에게 먼저 아무 메시지나 전송하지 않은 상태입니다" >&2 ;;
-    *'bot was blocked'*)  echo "  힌트: 봇이 차단된 상태입니다 — 텔레그램에서 차단 해제 후 다시 시도" >&2 ;;
+    *'"error_code":401'*) echo "$(t tt_hint_401)" >&2 ;;
+    *'chat not found'*)   echo "$(t tt_hint_chat)" >&2 ;;
+    *'bot was blocked'*)  echo "$(t tt_hint_blocked)" >&2 ;;
   esac
   exit 1
 }
@@ -579,29 +806,29 @@ ver_ge() {
 }
 
 cmd_update() {
-  command -v curl >/dev/null 2>&1 || { echo "오류: curl이 필요합니다" >&2; exit 1; }
+  command -v curl >/dev/null 2>&1 || { echo "$(t err_no_curl)" >&2; exit 1; }
 
   local tmp remote_ver
   tmp=$(mktemp)
-  echo "최신 버전 확인 중: $REPO_RAW/autore.sh"
+  echo "$(t upd_checking "$REPO_RAW/autore.sh")"
   if ! curl -fsSL "$REPO_RAW/autore.sh" -o "$tmp"; then
     rm -f "$tmp"
-    echo "오류: 최신 버전을 가져오지 못했습니다 (네트워크 확인)" >&2
+    echo "$(t upd_err_fetch)" >&2
     exit 1
   fi
   remote_ver=$(sed -n 's/^VERSION="\([^"]*\)".*/\1/p' "$tmp" | head -n 1)
   if [[ -z $remote_ver ]]; then
     rm -f "$tmp"
-    echo "오류: 버전 정보를 읽지 못했습니다" >&2
+    echo "$(t upd_err_nover)" >&2
     exit 1
   fi
 
   if ver_ge "$VERSION" "$remote_ver"; then
     rm -f "$tmp"
-    echo "✓ 이미 최신 버전입니다 (v$VERSION)"
+    echo "$(t upd_latest "$VERSION")"
     exit 0
   fi
-  echo "새 버전 발견: v$VERSION → v$remote_ver"
+  echo "$(t upd_found "$VERSION" "$remote_ver")"
   if (( UPDATE_CHECK )); then
     rm -f "$tmp"
     exit 0
@@ -610,12 +837,12 @@ cmd_update() {
   # 다운로드 파일 검증: 문법 검사 + 자가진단 통과 시에만 교체
   if ! bash -n "$tmp" || ! bash "$tmp" --selftest >/dev/null 2>&1; then
     rm -f "$tmp"
-    echo "오류: 다운로드한 파일이 검증에 실패했습니다 — 업데이트 중단" >&2
+    echo "$(t upd_err_verify)" >&2
     exit 1
   fi
   if [[ ! -w $SCRIPT_PATH ]]; then
     rm -f "$tmp"
-    echo "오류: $SCRIPT_PATH 에 쓰기 권한이 없습니다 (sudo 또는 install.sh 재설치)" >&2
+    echo "$(t upd_err_nowrite "$SCRIPT_PATH")" >&2
     exit 1
   fi
 
@@ -623,7 +850,7 @@ cmd_update() {
   local was_running=0
   if is_running; then
     was_running=1
-    echo "감시 프로세스 중지 중..."
+    echo "$(t upd_stopping)"
     cmd_stop >/dev/null
   fi
 
@@ -631,13 +858,13 @@ cmd_update() {
   if ! cp "$tmp" "$SCRIPT_PATH"; then
     cp "$SCRIPT_PATH.bak" "$SCRIPT_PATH"
     rm -f "$tmp"
-    echo "오류: 파일 교체 실패 — 백업으로 복원했습니다" >&2
+    echo "$(t upd_err_replace)" >&2
     exit 1
   fi
   chmod +x "$SCRIPT_PATH"
   rm -f "$tmp"
-  echo "✓ 업데이트 완료: v$VERSION → v$remote_ver (백업: $SCRIPT_PATH.bak)"
-  (( was_running )) && echo "  감시가 중지된 상태입니다 — 다시 시작: autore start"
+  echo "$(t upd_done "$VERSION" "$remote_ver" "$SCRIPT_PATH.bak")"
+  (( was_running )) && echo "$(t upd_restart)"
   exit 0
 }
 
