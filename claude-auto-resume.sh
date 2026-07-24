@@ -16,7 +16,7 @@
 #===============================================================================
 set -uo pipefail
 
-VERSION="1.1.0"
+VERSION="1.1.1"
 REPO_RAW="https://raw.githubusercontent.com/2pylab/claude-auto-resume/main"
 
 #--- 스크립트 절대 경로 (macOS 호환: readlink -f 미사용) -------------------------
@@ -447,6 +447,7 @@ cmd_start() {
   echo "  - 상태 확인: $SCRIPT_PATH status"
   echo "  - 감시 중지: $SCRIPT_PATH stop"
   (( DRY_RUN )) && echo "  ⚠ dry-run 모드: 실제 메시지는 전송되지 않습니다"
+  exit 0
 }
 
 cmd_stop() {
@@ -493,6 +494,18 @@ cmd_attach() {
   exec tmux attach -t "$SESSION"
 }
 
+# ver_ge A B — 버전 A >= B (semver 숫자 비교) 이면 0
+ver_ge() {
+  local a1 a2 a3 b1 b2 b3
+  IFS=. read -r a1 a2 a3 <<<"$1"
+  IFS=. read -r b1 b2 b3 <<<"$2"
+  a1=$((10#${a1:-0})); a2=$((10#${a2:-0})); a3=$((10#${a3:-0}))
+  b1=$((10#${b1:-0})); b2=$((10#${b2:-0})); b3=$((10#${b3:-0}))
+  (( a1 != b1 )) && { (( a1 > b1 )); return $?; }
+  (( a2 != b2 )) && { (( a2 > b2 )); return $?; }
+  (( a3 >= b3 ))
+}
+
 cmd_update() {
   command -v curl >/dev/null 2>&1 || { echo "오류: curl이 필요합니다" >&2; exit 1; }
 
@@ -511,7 +524,7 @@ cmd_update() {
     exit 1
   fi
 
-  if [[ $remote_ver == "$VERSION" ]]; then
+  if ver_ge "$VERSION" "$remote_ver"; then
     rm -f "$tmp"
     echo "✓ 이미 최신 버전입니다 (v$VERSION)"
     exit 0
@@ -553,6 +566,7 @@ cmd_update() {
   rm -f "$tmp"
   echo "✓ 업데이트 완료: v$VERSION → v$remote_ver (백업: $SCRIPT_PATH.bak)"
   (( was_running )) && echo "  감시가 중지된 상태입니다 — 다시 시작: claude-auto-resume start"
+  exit 0
 }
 
 #--- 디스패치 --------------------------------------------------------------------
