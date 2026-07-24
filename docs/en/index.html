@@ -175,6 +175,8 @@ cd claude-auto-resume
   <h3>Updating</h3>
   <pre><code>claude-auto-resume update          # check latest → verify → replace (auto backup)
 claude-auto-resume update --check  # check only</code></pre>
+  <div class="notice">Note for v1.0.0 users: <code>update</code> was introduced in v1.1.0.
+    On older versions, re-run the install one-liner above once — afterwards you can use <code>update</code>.</div>
   <p>The downloaded file is only installed after passing a syntax check and the self-test,
      and the previous file is backed up to <code>.bak</code>. If the watcher is running it is
      stopped first — run <code>start</code> again afterwards.</p>

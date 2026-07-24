@@ -58,6 +58,10 @@ claude-auto-resume update          # 최신 버전 확인 → 검증 후 교체
 claude-auto-resume update --check  # 새 버전이 있는지 확인만
 ```
 
+> **v1.0.0 사용자 참고:** `update` 명령은 v1.1.0부터 있습니다. 그 이전 버전이라면
+> 설치 원라인을 한 번만 다시 실행하세요 — `curl -fsSL https://raw.githubusercontent.com/2pylab/claude-auto-resume/main/install.sh | bash`
+> 설치기가 `v1.0.0 → 최신` 버전 전환을 표시해주며, 이후부터는 `update` 명령을 쓸 수 있습니다.
+
 - GitHub에서 최신 스크립트를 받아 **문법 검사 + 자가진단(`--selftest`) 통과 후에만** 교체합니다.
 - 기존 파일은 `claude-auto-resume.bak`으로 자동 백업됩니다.
 - 감시 실행 중이면 자동으로 중지 후 교체하므로, 업데이트 뒤 `claude-auto-resume start`로 다시 시작하세요.

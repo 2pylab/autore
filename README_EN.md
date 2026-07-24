@@ -58,6 +58,11 @@ claude-auto-resume update          # check latest → verify → replace
 claude-auto-resume update --check  # only check whether a new version exists
 ```
 
+> **Note for v1.0.0 users:** the `update` command was introduced in v1.1.0. On older
+> versions, simply re-run the install one-liner once — `curl -fsSL https://raw.githubusercontent.com/2pylab/claude-auto-resume/main/install.sh | bash`
+> The installer shows the version transition (`v1.0.0 → latest`), and from then on
+> you can use the `update` command.
+
 - The new script is downloaded from GitHub and **only installed after passing a syntax check and the self-test (`--selftest`)**.
 - The previous file is backed up automatically to `claude-auto-resume.bak`.
 - If the watcher is running, it is stopped before the replacement — run `claude-auto-resume start` again afterwards.

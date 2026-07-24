@@ -90,11 +90,23 @@ if (( ! ok )); then
 fi
 
 #--- 설치 -------------------------------------------------------------------------
+NEW_VER=$(sed -n 's/^VERSION="\([^"]*\)".*/\1/p' "$SRC" | head -n 1)
+OLD_VER=""
+[[ -f $PREFIX/$NAME ]] && \
+  OLD_VER=$(sed -n 's/^VERSION="\([^"]*\)".*/\1/p' "$PREFIX/$NAME" | head -n 1)
+
 mkdir -p "$PREFIX"
 cp "$SRC" "$PREFIX/$NAME"
 chmod +x "$PREFIX/$NAME"
 say ""
-say "✓ 설치 완료: $PREFIX/$NAME"
+if [[ -z $OLD_VER ]]; then
+  say "✓ 설치 완료: $PREFIX/$NAME (v$NEW_VER)"
+elif [[ $OLD_VER != "$NEW_VER" ]]; then
+  say "✓ 업데이트 완료: v$OLD_VER → v$NEW_VER"
+  say "  앞으로는 'claude-auto-resume update' 명령으로 간편하게 업데이트할 수 있습니다"
+else
+  say "✓ 재설치 완료: $PREFIX/$NAME (v$NEW_VER)"
+fi
 if "$PREFIX/$NAME" --selftest >/dev/null 2>&1; then
   say "✓ 파서 자가진단 통과"
 else
