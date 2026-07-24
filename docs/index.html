@@ -3,12 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>autore — Claude Code 사용량 제한 자동 재개</title>
-<meta name="description" content="Claude Code 5시간 사용량 제한에 걸리면 리셋 시각까지 대기했다가 자동으로 작업을 이어가는 경량 감시 도구">
+<title>autore — AI CLI 사용량 제한 자동 재개</title>
+<meta name="description" content="Claude Code, OpenCode 등 AI CLI의 사용량 제한에 걸리면 리셋 시각까지 대기했다가 자동으로 작업을 이어가는 경량 감시 도구">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="apple-touch-icon" href="assets/favicon.svg">
 <style>
   :root {
     --bg: #0d1117; --surface: #161b22; --border: #30363d;
-    --text: #e6edf3; --muted: #8b949e; --accent: #d97757; --accent2: #f0a58a;
+    --text: #e6edf3; --muted: #8b949e;
+    --accent: #10b981; --accent2: #6ee7b7; --accent3: #22d3ee;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -26,32 +29,43 @@
     border-bottom: 1px solid var(--border);
   }
   nav .container { display: flex; align-items: center; gap: 18px; height: 56px; flex-wrap: wrap; }
-  nav .logo { font-weight: 700; color: var(--text); font-family: ui-monospace, monospace; }
+  nav .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--text); font-family: ui-monospace, monospace; }
+  nav .brand img { width: 24px; height: 24px; }
   nav .links { display: flex; gap: 14px; margin-left: auto; font-size: 14px; flex-wrap: wrap; }
   nav .links a { color: var(--muted); }
   nav .links a:hover { color: var(--text); text-decoration: none; }
   .lang { border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px; }
 
-  .hero { text-align: center; padding: 72px 20px 48px; }
-  .hero h1 { font-size: 42px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-  .hero h1 .dash { color: var(--accent); }
+  .hero { text-align: center; padding: 64px 20px 48px; }
+  .hero-logo { width: 88px; height: 88px; margin-bottom: 18px; }
+  .hero h1 { font-size: 52px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -1px; }
+  .hero h1 .re {
+    background: linear-gradient(135deg, #34d399, #22d3ee);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .hero .etym { color: var(--muted); font-size: 14px; font-family: ui-monospace, monospace; margin-top: 4px; }
   .hero p.tagline { color: var(--muted); font-size: 18px; margin: 16px auto 28px; max-width: 640px; }
   .badges { display: flex; gap: 8px; justify-content: center; margin-bottom: 28px; flex-wrap: wrap; }
   .badge {
     font-size: 12px; color: var(--muted);
     border: 1px solid var(--border); border-radius: 999px; padding: 3px 12px;
   }
+  .badge.ver { color: var(--accent2); border-color: var(--accent); }
   .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
   .btn {
     display: inline-block; padding: 12px 24px; border-radius: 8px; font-weight: 600;
     border: 1px solid var(--border); color: var(--text); background: var(--surface);
   }
   .btn:hover { text-decoration: none; border-color: var(--accent); }
-  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary {
+    background: linear-gradient(135deg, #10b981, #0ea5b7);
+    border-color: transparent; color: #fff;
+  }
 
   section { padding: 48px 0; border-top: 1px solid var(--border); }
   h2 { font-size: 26px; margin-bottom: 8px; }
   h2 .num { color: var(--accent); font-family: ui-monospace, monospace; margin-right: 8px; }
+  h3 { margin-top: 20px; }
   .sub { color: var(--muted); margin-bottom: 24px; }
 
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
@@ -59,7 +73,7 @@
     background: var(--surface); border: 1px solid var(--border);
     border-radius: 10px; padding: 18px;
   }
-  .card h3 { font-size: 16px; margin-bottom: 6px; }
+  .card h3 { font-size: 16px; margin-bottom: 6px; margin-top: 0; }
   .card p { color: var(--muted); font-size: 14px; }
 
   pre {
@@ -92,7 +106,7 @@
 
   .notice {
     border: 1px solid var(--accent); border-radius: 10px; padding: 18px;
-    background: rgba(217,119,87,.07); margin: 14px 0; font-size: 14px;
+    background: rgba(16,185,129,.07); margin: 14px 0; font-size: 14px;
   }
   ol.legal li, ul.legal li { margin: 8px 0 8px 20px; }
 
@@ -106,7 +120,7 @@
 
 <nav>
   <div class="container">
-    <span class="logo">autore</span>
+    <span class="brand"><img src="assets/logo.svg" alt="autore 로고">autore</span>
     <div class="links">
       <a href="#features">기능</a>
       <a href="#install">설치</a>
@@ -120,12 +134,16 @@
 </nav>
 
 <header class="hero">
-  <h1>claude<span class="dash">-auto-</span>resume</h1>
+  <img class="hero-logo" src="assets/favicon.svg" alt="autore 로고">
+  <h1>auto<span class="re">re</span></h1>
+  <p class="etym">auto + re(resume / retry / restart)</p>
   <p class="tagline">
-    Claude Code의 5시간 사용량 제한에 걸리면, 리셋 시각까지 대기했다가
-    <strong>자동으로 작업을 이어가는</strong> 경량 감시 도구
+    Claude Code, OpenCode 등 <strong>AI CLI의 사용량 제한</strong>에 걸리면,
+    리셋 시각까지 대기했다가 <strong>자동으로 작업을 이어가는</strong> 경량 감시 도구
   </p>
   <div class="badges">
+    <span class="badge ver">v2.0.0</span>
+    <span class="badge">멀티 CLI (Claude Code · OpenCode)</span>
     <span class="badge">Linux · macOS</span>
     <span class="badge">bash 3.2+</span>
     <span class="badge">텔레그램 알림</span>
@@ -144,9 +162,11 @@
   <p class="sub">제한이 걸려도 잠이나 출근을 미룰 필요 없이, 리셋되면 알아서 작업이 다시 시작됩니다.</p>
   <div class="grid">
     <div class="card"><h3>🔁 자동 재개</h3><p>제한 감지 → 리셋 시각 파싱 → 대기 → 세션에 재개 메시지 자동 입력. 대화 맥락 그대로 복귀.</p></div>
+    <div class="card"><h3>🤖 멀티 CLI</h3><p>Claude Code 기본 지원. <code>--cli opencode</code> 한 옵션으로 OpenCode 등 다른 AI CLI도 감시.</p></div>
     <div class="card"><h3>⏱ 다단계 시각 파서</h3><p><code>3pm</code>, <code>3:30 PM</code>, <code>15:00</code>, <code>Jul 28 at 3pm</code>(주간 제한), <code>tomorrow at 9am</code>, 자정/연도 넘김, 화면 줄바꿈 처리.</p></div>
     <div class="card"><h3>🛡 안전장치</h3><p>같은 제한 메시지 중복 처리 방지, 모순된 시각 거부(제한 창 검증), 파싱 실패 시 주기적 재시도.</p></div>
-    <div class="card"><h3>📨 텔레그램 알림</h3><p>제한 감지 / 재개 완료 / 재시도 시 봇 알림 (선택 사항).</p></div>
+    <div class="card"><h3>📨 텔레그램 알림</h3><p>감시 시작 / 제한 감지 / 재개 완료 / 재시도 시 봇 알림. <code>test-telegram</code>으로 연동 즉시 확인.</p></div>
+    <div class="card"><h3>🎨 보기 좋은 상태 출력</h3><p><code>status</code>가 현재 상태(실시간)와 최근 로그(과거 기록)를 컬러로 구분해 표시.</p></div>
     <div class="card"><h3>🧪 자가진단 내장</h3><p><code>--selftest</code>로 파서 단위 테스트 16종 실행.</p></div>
     <div class="card"><h3>📦 원라인 설치</h3><p>의존성 검사 + 자가진단 포함 설치 스크립트. Linux와 macOS 모두 지원.</p></div>
   </div>
@@ -175,34 +195,43 @@ cd autore
   <h3>업데이트</h3>
   <pre><code>autore update          # 최신 버전 확인 → 검증 후 교체 (자동 백업)
 autore update --check  # 새 버전 확인만</code></pre>
-  <div class="notice">v1.0.0 사용자 참고: <code>update</code> 명령은 v1.1.0부터 있습니다.
-    그 이전 버전이라면 위의 설치 원라인을 한 번만 다시 실행하세요 — 이후부터는 <code>update</code>를 쓸 수 있습니다.</div>
-  <p>다운로드한 파일은 문법 검사 + 자가진단 통과 후에만 교체되며, 기존 파일은 <code>.bak</code>으로 백업됩니다.
+  <div class="notice"><strong>v1.x(<code>claude-auto-resume</code>) 사용자 참고:</strong> v2.0.0부터 이름이 <code>autore</code>로 바뀌었습니다.
+    위의 설치 원라인을 한 번만 다시 실행하면 <code>autore</code>로 설치되고 구버전 바이너리는 자동 정리됩니다.
+    (기존 <code>claude-auto-resume update</code>로도 v2.0.0을 받을 수 있지만 명령어 이름이 그대로이므로 재설치를 권장합니다.
+    기존 로그·PID 파일은 그대로 이어서 사용합니다.)</div>
+  <p>다운로드한 파일은 문법 검사 + 자가진단 통과 후에만 교체하며, 기존 파일은 <code>.bak</code>으로 백업합니다.
      감시 실행 중이면 자동 중지 후 교체하니 업데이트 뒤 <code>start</code>로 다시 시작하세요.</p>
 </section>
 
 <section id="usage">
   <h2><span class="num">03</span>사용법</h2>
-  <p class="sub">두 명령이면 끝 — 감시를 켜고, 평소처럼 Claude Code를 쓰세요.</p>
+  <p class="sub">두 명령이면 끝 — 감시를 켜고, 평소처럼 AI CLI를 쓰세요.</p>
   <pre><code>autore start     # ① 백그라운드 감시 시작
-autore attach    # ② Claude Code 세션 접속 → 평소처럼 작업</code></pre>
+autore attach    # ② AI CLI 세션 접속 → 평소처럼 작업</code></pre>
+
+  <h3>OpenCode 등 다른 AI CLI 감시</h3>
+  <pre><code>autore start --session opencode --cli opencode</code></pre>
 
   <table>
     <tr><th>명령</th><th>설명</th></tr>
     <tr><td><code>start [옵션]</code></td><td>백그라운드 감시 시작 (tmux 세션 없으면 자동 생성)</td></tr>
     <tr><td><code>stop</code></td><td>감시 중지</td></tr>
-    <tr><td><code>status</code></td><td>감시 상태 + 세션 + 텔레그램 설정 + 최근 로그</td></tr>
+    <tr><td><code>status</code></td><td>감시 상태(실시간) + 세션 + 텔레그램 설정 + 최근 로그 (컬러 출력)</td></tr>
     <tr><td><code>logs [-f]</code></td><td>로그 보기 (<code>-f</code>: 실시간)</td></tr>
-    <tr><td><code>attach</code></td><td>Claude Code tmux 세션 접속</td></tr>
+    <tr><td><code>attach</code></td><td>AI CLI tmux 세션 접속</td></tr>
     <tr><td><code>run [옵션]</code></td><td>포그라운드 감시 (디버깅용)</td></tr>
     <tr><td><code>update [--check]</code></td><td>최신 버전으로 자동 업데이트 (<code>--check</code>: 확인만)</td></tr>
+    <tr><td><code>test-telegram</code></td><td>텔레그램 연동 테스트 메시지 발송</td></tr>
     <tr><td><code>--selftest</code></td><td>파서 단위 테스트 16종</td></tr>
+    <tr><td><code>version</code></td><td>버전 출력 (<code>--version</code>과 동일)</td></tr>
+    <tr><td><code>help</code></td><td>도움말 (<code>-h</code>, <code>--help</code>와 동일)</td></tr>
   </table>
 
   <h3>주요 옵션 (또는 동명 환경변수)</h3>
   <table>
     <tr><th>옵션</th><th>기본값</th><th>설명</th></tr>
     <tr><td><code>--session NAME</code></td><td><code>claude</code></td><td>감시할 tmux 세션명</td></tr>
+    <tr><td><code>--cli CMD</code></td><td><code>claude</code></td><td>세션 생성 시 실행할 AI CLI (예: <code>opencode</code>)</td></tr>
     <tr><td><code>--poll SEC</code></td><td><code>30</code></td><td>화면 확인 주기</td></tr>
     <tr><td><code>--buffer SEC</code></td><td><code>90</code></td><td>리셋 후 여유 대기</td></tr>
     <tr><td><code>--fallback SEC</code></td><td><code>900</code></td><td>시각 파싱 실패 시 재시도 대기</td></tr>
@@ -210,16 +239,17 @@ autore attach    # ② Claude Code 세션 접속 → 평소처럼 작업</code><
     <tr><td><code>--message TEXT</code></td><td><code>계속 이어서 진행해줘</code></td><td>리셋 후 자동 입력 메시지</td></tr>
     <tr><td><code>--dry-run</code></td><td>—</td><td>실제 전송 없이 로그만 (테스트용)</td></tr>
   </table>
-  <p>전체 옵션은 <code>autore --help</code> 또는 <a href="https://github.com/2pylab/autore#readme">README</a> 참조.</p>
+  <p>전체 옵션은 <code>autore help</code> 또는 <a href="https://github.com/2pylab/autore#readme">README</a> 참조.</p>
 </section>
 
 <section id="telegram">
   <h2><span class="num">04</span>텔레그램 알림 (선택)</h2>
-  <p class="sub">제한 감지, 재개 완료, 재시도 때마다 텔레그램으로 알림을 받습니다.</p>
+  <p class="sub">감시 시작, 제한 감지, 재개 완료, 재시도 때마다 텔레그램으로 알림을 받습니다.</p>
   <div class="flow">
     <div class="step"><span class="n">1</span><span>텔레그램 <a href="https://t.me/BotFather">@BotFather</a> → <code>/newbot</code> → 봇 토큰 발급</span></div>
     <div class="step"><span class="n">2</span><span>봇과 대화 시작 후 <a href="https://t.me/userinfobot">@userinfobot</a> 등으로 채팅 ID 확인</span></div>
-    <div class="step"><span class="n">3</span><span><code>~/.bashrc</code>에 아래 두 줄 추가 후 <code>start</code></span></div>
+    <div class="step"><span class="n">3</span><span><code>~/.bashrc</code>에 아래 두 줄 추가</span></div>
+    <div class="step"><span class="n">4</span><span><code>autore test-telegram</code> — 테스트 메시지가 오면 설정 완료</span></div>
   </div>
   <pre><code>export TELEGRAM_BOT_TOKEN="123456:ABC..."
 export TELEGRAM_CHAT_ID="123456789"</code></pre>
@@ -229,9 +259,9 @@ export TELEGRAM_CHAT_ID="123456789"</code></pre>
 <section id="how">
   <h2><span class="num">05</span>동작 원리</h2>
   <div class="flow">
-    <div class="step"><span class="n">1</span><span>tmux 세션의 Claude Code 화면을 30초마다 확인 (하단 40줄, 줄바꿈 메시지는 2줄 더 묶어서 파싱)</span></div>
+    <div class="step"><span class="n">1</span><span>tmux 세션의 AI CLI 화면을 30초마다 확인 (하단 40줄, 줄바꿈 메시지는 2줄 더 묶어서 파싱)</span></div>
     <div class="arrow">↓</div>
-    <div class="step"><span class="n">2</span><span>제한 메시지 감지 → 리셋 시각 파싱 (제한 창 밖의 모순된 시각은 거부)</span></div>
+    <div class="step"><span class="n">2</span><span>제한 메시지 감지 → 리셋 시각 파싱 (제한 창 밖의 모순된 시각은 거부, 프로바이더 공통 표현 — rate limit / too many requests / quota exceeded — 도 감지)</span></div>
     <div class="arrow">↓</div>
     <div class="step"><span class="n">3</span><span>리셋 시각 + 버퍼(90초)까지 대기</span></div>
     <div class="arrow">↓</div>
@@ -240,28 +270,28 @@ export TELEGRAM_CHAT_ID="123456789"</code></pre>
     <div class="step"><span class="n">5</span><span>여전히 제한 상태면 최대 2회까지만 재시도 (메시지 도배 방지)</span></div>
   </div>
   <p>감지된 실제 제한 메시지 원문은 <code>~/.autore-samples.log</code>에 자동 수집되어,
-     Anthropic이 메시지 형식을 바꿔도 파서를 안전하게 업데이트할 수 있습니다
+     메시지 형식이 바뀌어도 파서를 안전하게 업데이트할 수 있습니다
      (<code>--selftest</code> 회귀 테스트 16종).</p>
 </section>
 
 <section id="legal">
   <h2><span class="num">06</span>법률 검토 및 면책조항</h2>
   <ul class="legal">
-    <li>이 도구는 Claude Code가 <strong>화면에 이미 표시한</strong> 제한 안내를 읽고, 안낐된 리셋 시각까지
+    <li>이 도구는 AI CLI가 <strong>화면에 이미 표시한</strong> 제한 안내를 읽고, 안내한 리셋 시각까지
         <strong>단순 대기</strong>한 뒤 사용자 본인의 세션을 재개하는 <strong>단순 대기·재개 스크립트</strong>입니다.</li>
-    <li>사용량 제한을 <strong>우회하거나 회피하지 않으며</strong>, Anthropic 서비스에 추가 API 요청을 보내지 않고,
+    <li>사용량 제한을 <strong>우회하거나 회피하지 않으며</strong>, 각 서비스에 추가 API 요청을 전송하지 않고,
         인증·접근 제어를 변경하지 않습니다. 제한이 해제된 후에만 정상적으로 재개합니다.</li>
     <li>본 프로젝트는 <strong>Anthropic과 무관한 비공식 오픈소스</strong>이며, Anthropic이 보증·지원하지 않습니다.
         "Claude", "Claude Code"는 Anthropic의 상표입니다.</li>
-    <li>Anthropic 이용약관·사용 정책 확인 및 준수 책임은 <strong>사용자 본인</strong>에게 있으며,
+    <li>Claude Code, OpenCode 등 사용하는 각 AI CLI 제공자의 <strong>이용약관·사용 정책 확인 및 준수 책임은 사용자 본인</strong>에게 있으며,
         사용으로 인한 모든 결과의 책임도 사용자에게 있습니다.</li>
     <li>이 소프트웨어는 <strong>어떠한 보증 없이 "있는 그대로"</strong> 제공됩니다 (MIT License).</li>
   </ul>
   <div class="notice">
     <strong>English:</strong> autore is an unofficial script that simply waits for the
     publicly displayed usage-limit reset time and resumes your own session. It does not bypass any
-    rate limits. Not affiliated with Anthropic. Use at your own risk; you are responsible for
-    complying with Anthropic's Terms of Service. Provided as-is without warranty (MIT).
+    rate limits. Not affiliated with Anthropic or any AI CLI provider. Use at your own risk; you are
+    responsible for complying with each provider's Terms of Service. Provided as-is without warranty (MIT).
   </div>
 </section>
 
@@ -269,7 +299,7 @@ export TELEGRAM_CHAT_ID="123456789"</code></pre>
 
 <footer>
   <div class="container">
-    <p>MIT License · 비공식 도구 (Anthropic과 무관) ·
+    <p>MIT License · 비공식 도구 (Anthropic 등 각 CLI 제공자와 무관) ·
        <a href="https://github.com/2pylab/autore">GitHub</a> ·
        <a href="https://github.com/2pylab/autore/issues">이슈 제보</a></p>
   </div>

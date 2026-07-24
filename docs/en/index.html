@@ -3,12 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>autore — Auto-resume after Claude Code usage limits</title>
-<meta name="description" content="A lightweight watcher that waits out Claude Code's 5-hour usage limit and automatically resumes your work when it resets.">
+<title>autore — auto-resume for AI CLI usage limits</title>
+<meta name="description" content="A lightweight watcher that waits out usage limits of AI CLIs (Claude Code, OpenCode, ...) and automatically resumes your work when they reset">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<link rel="apple-touch-icon" href="../assets/favicon.svg">
 <style>
   :root {
     --bg: #0d1117; --surface: #161b22; --border: #30363d;
-    --text: #e6edf3; --muted: #8b949e; --accent: #d97757; --accent2: #f0a58a;
+    --text: #e6edf3; --muted: #8b949e;
+    --accent: #10b981; --accent2: #6ee7b7; --accent3: #22d3ee;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -26,32 +29,43 @@
     border-bottom: 1px solid var(--border);
   }
   nav .container { display: flex; align-items: center; gap: 18px; height: 56px; flex-wrap: wrap; }
-  nav .logo { font-weight: 700; color: var(--text); font-family: ui-monospace, monospace; }
+  nav .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--text); font-family: ui-monospace, monospace; }
+  nav .brand img { width: 24px; height: 24px; }
   nav .links { display: flex; gap: 14px; margin-left: auto; font-size: 14px; flex-wrap: wrap; }
   nav .links a { color: var(--muted); }
   nav .links a:hover { color: var(--text); text-decoration: none; }
   .lang { border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px; }
 
-  .hero { text-align: center; padding: 72px 20px 48px; }
-  .hero h1 { font-size: 42px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-  .hero h1 .dash { color: var(--accent); }
+  .hero { text-align: center; padding: 64px 20px 48px; }
+  .hero-logo { width: 88px; height: 88px; margin-bottom: 18px; }
+  .hero h1 { font-size: 52px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -1px; }
+  .hero h1 .re {
+    background: linear-gradient(135deg, #34d399, #22d3ee);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .hero .etym { color: var(--muted); font-size: 14px; font-family: ui-monospace, monospace; margin-top: 4px; }
   .hero p.tagline { color: var(--muted); font-size: 18px; margin: 16px auto 28px; max-width: 640px; }
   .badges { display: flex; gap: 8px; justify-content: center; margin-bottom: 28px; flex-wrap: wrap; }
   .badge {
     font-size: 12px; color: var(--muted);
     border: 1px solid var(--border); border-radius: 999px; padding: 3px 12px;
   }
+  .badge.ver { color: var(--accent2); border-color: var(--accent); }
   .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
   .btn {
     display: inline-block; padding: 12px 24px; border-radius: 8px; font-weight: 600;
     border: 1px solid var(--border); color: var(--text); background: var(--surface);
   }
   .btn:hover { text-decoration: none; border-color: var(--accent); }
-  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary {
+    background: linear-gradient(135deg, #10b981, #0ea5b7);
+    border-color: transparent; color: #fff;
+  }
 
   section { padding: 48px 0; border-top: 1px solid var(--border); }
   h2 { font-size: 26px; margin-bottom: 8px; }
   h2 .num { color: var(--accent); font-family: ui-monospace, monospace; margin-right: 8px; }
+  h3 { margin-top: 20px; }
   .sub { color: var(--muted); margin-bottom: 24px; }
 
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
@@ -59,7 +73,7 @@
     background: var(--surface); border: 1px solid var(--border);
     border-radius: 10px; padding: 18px;
   }
-  .card h3 { font-size: 16px; margin-bottom: 6px; }
+  .card h3 { font-size: 16px; margin-bottom: 6px; margin-top: 0; }
   .card p { color: var(--muted); font-size: 14px; }
 
   pre {
@@ -92,9 +106,9 @@
 
   .notice {
     border: 1px solid var(--accent); border-radius: 10px; padding: 18px;
-    background: rgba(217,119,87,.07); margin: 14px 0; font-size: 14px;
+    background: rgba(16,185,129,.07); margin: 14px 0; font-size: 14px;
   }
-  ul.legal li { margin: 8px 0 8px 20px; }
+  ol.legal li, ul.legal li { margin: 8px 0 8px 20px; }
 
   footer {
     border-top: 1px solid var(--border); padding: 32px 0; text-align: center;
@@ -106,7 +120,7 @@
 
 <nav>
   <div class="container">
-    <span class="logo">autore</span>
+    <span class="brand"><img src="../assets/logo.svg" alt="autore logo">autore</span>
     <div class="links">
       <a href="#features">Features</a>
       <a href="#install">Install</a>
@@ -120,12 +134,16 @@
 </nav>
 
 <header class="hero">
-  <h1>claude<span class="dash">-auto-</span>resume</h1>
+  <img class="hero-logo" src="../assets/favicon.svg" alt="autore logo">
+  <h1>auto<span class="re">re</span></h1>
+  <p class="etym">auto + re(resume / retry / restart)</p>
   <p class="tagline">
-    Hit Claude Code's 5-hour usage limit? This lightweight watcher waits for the reset
-    and <strong>automatically resumes your work</strong>.
+    Hit a <strong>usage limit</strong> on Claude Code, OpenCode, or another AI CLI?
+    This lightweight watcher waits for the reset and <strong>automatically resumes your work</strong>.
   </p>
   <div class="badges">
+    <span class="badge ver">v2.0.0</span>
+    <span class="badge">Multi-CLI (Claude Code · OpenCode)</span>
     <span class="badge">Linux · macOS</span>
     <span class="badge">bash 3.2+</span>
     <span class="badge">Telegram alerts</span>
@@ -144,9 +162,11 @@
   <p class="sub">No more babysitting the rate limit — when it resets, your session picks up where it left off.</p>
   <div class="grid">
     <div class="card"><h3>🔁 Auto-resume</h3><p>Detect limit → parse reset time → sleep → type the resume message into your session. Conversation context stays intact.</p></div>
+    <div class="card"><h3>🤖 Multi-CLI</h3><p>Works with Claude Code by default. One flag — <code>--cli opencode</code> — watches OpenCode and other AI CLIs.</p></div>
     <div class="card"><h3>⏱ Layered time parser</h3><p>Handles <code>3pm</code>, <code>3:30 PM</code>, <code>15:00</code>, <code>Jul 28 at 3pm</code> (weekly limits), <code>tomorrow at 9am</code>, midnight/year rollover, and wrapped lines.</p></div>
     <div class="card"><h3>🛡 Safety guards</h3><p>Dedupes identical limit messages, rejects implausible times (limit-window validation), periodic retry on parse failure.</p></div>
-    <div class="card"><h3>📨 Telegram alerts</h3><p>Bot notifications on limit detection, resume, and retry (optional).</p></div>
+    <div class="card"><h3>📨 Telegram alerts</h3><p>Bot notifications on watcher start, limit detection, resume, and retry. Verify the setup instantly with <code>test-telegram</code>.</p></div>
+    <div class="card"><h3>🎨 Readable status output</h3><p><code>status</code> separates live state from recent logs with color-coded sections.</p></div>
     <div class="card"><h3>🧪 Built-in self-test</h3><p><code>--selftest</code> runs 16 parser unit tests.</p></div>
     <div class="card"><h3>📦 One-line install</h3><p>Installer with dependency checks and self-test. Linux and macOS supported.</p></div>
   </div>
@@ -175,8 +195,10 @@ cd autore
   <h3>Updating</h3>
   <pre><code>autore update          # check latest → verify → replace (auto backup)
 autore update --check  # check only</code></pre>
-  <div class="notice">Note for v1.0.0 users: <code>update</code> was introduced in v1.1.0.
-    On older versions, re-run the install one-liner above once — afterwards you can use <code>update</code>.</div>
+  <div class="notice"><strong>Note for v1.x (<code>claude-auto-resume</code>) users:</strong> the project was renamed to <code>autore</code> in v2.0.0.
+    Re-run the install one-liner above once — it installs <code>autore</code> and removes the old binary automatically.
+    (The old <code>claude-auto-resume update</code> also fetches v2.0.0, but keeps the old command name — reinstalling is recommended.
+    Existing log/PID files are picked up automatically.)</div>
   <p>The downloaded file is only installed after passing a syntax check and the self-test,
      and the previous file is backed up to <code>.bak</code>. If the watcher is running it is
      stopped first — run <code>start</code> again afterwards.</p>
@@ -184,26 +206,33 @@ autore update --check  # check only</code></pre>
 
 <section id="usage">
   <h2><span class="num">03</span>Usage</h2>
-  <p class="sub">Two commands — start the watcher, then use Claude Code as usual.</p>
+  <p class="sub">Two commands — start the watcher, then use your AI CLI as usual.</p>
   <pre><code>autore start     # ① start background watcher
-autore attach    # ② attach to the Claude Code session → work as usual</code></pre>
+autore attach    # ② attach to the AI CLI session → work as usual</code></pre>
+
+  <h3>Watching another AI CLI (e.g. OpenCode)</h3>
+  <pre><code>autore start --session opencode --cli opencode</code></pre>
 
   <table>
     <tr><th>Command</th><th>Description</th></tr>
     <tr><td><code>start [options]</code></td><td>Start background watcher (creates the tmux session if missing)</td></tr>
     <tr><td><code>stop</code></td><td>Stop the watcher</td></tr>
-    <tr><td><code>status</code></td><td>Watcher state + session + Telegram config + recent logs</td></tr>
+    <tr><td><code>status</code></td><td>Watcher state (live) + session + Telegram config + recent logs (color-coded)</td></tr>
     <tr><td><code>logs [-f]</code></td><td>Show logs (<code>-f</code>: follow)</td></tr>
-    <tr><td><code>attach</code></td><td>Attach to the Claude Code tmux session</td></tr>
+    <tr><td><code>attach</code></td><td>Attach to the AI CLI tmux session</td></tr>
     <tr><td><code>run [options]</code></td><td>Foreground watcher (for debugging)</td></tr>
     <tr><td><code>update [--check]</code></td><td>Self-update to the latest version (<code>--check</code>: check only)</td></tr>
+    <tr><td><code>test-telegram</code></td><td>Send a Telegram test message to verify the setup</td></tr>
     <tr><td><code>--selftest</code></td><td>16 parser unit tests</td></tr>
+    <tr><td><code>version</code></td><td>Print version (same as <code>--version</code>)</td></tr>
+    <tr><td><code>help</code></td><td>Print usage (same as <code>-h</code>, <code>--help</code>)</td></tr>
   </table>
 
   <h3>Common options (or matching env vars)</h3>
   <table>
     <tr><th>Option</th><th>Default</th><th>Description</th></tr>
     <tr><td><code>--session NAME</code></td><td><code>claude</code></td><td>tmux session to watch</td></tr>
+    <tr><td><code>--cli CMD</code></td><td><code>claude</code></td><td>AI CLI to launch when creating the session (e.g. <code>opencode</code>)</td></tr>
     <tr><td><code>--poll SEC</code></td><td><code>30</code></td><td>Screen check interval</td></tr>
     <tr><td><code>--buffer SEC</code></td><td><code>90</code></td><td>Extra wait after reset time</td></tr>
     <tr><td><code>--fallback SEC</code></td><td><code>900</code></td><td>Retry delay on parse failure</td></tr>
@@ -211,16 +240,17 @@ autore attach    # ② attach to the Claude Code session → work as usual</code
     <tr><td><code>--message TEXT</code></td><td>Korean "keep going"</td><td>Message typed after reset</td></tr>
     <tr><td><code>--dry-run</code></td><td>—</td><td>Log only, never send (testing)</td></tr>
   </table>
-  <p>Full options: <code>autore --help</code> or the <a href="https://github.com/2pylab/autore#readme">README</a>.</p>
+  <p>Full options: <code>autore help</code> or the <a href="https://github.com/2pylab/autore#readme">README</a>.</p>
 </section>
 
 <section id="telegram">
   <h2><span class="num">04</span>Telegram alerts (optional)</h2>
-  <p class="sub">Get notified on limit detection, resume, and retry.</p>
+  <p class="sub">Get notified on watcher start, limit detection, resume, and retry.</p>
   <div class="flow">
     <div class="step"><span class="n">1</span><span>Message <a href="https://t.me/BotFather">@BotFather</a> → <code>/newbot</code> → get a bot token</span></div>
     <div class="step"><span class="n">2</span><span>Start a chat with your bot, then get your chat ID via <a href="https://t.me/userinfobot">@userinfobot</a></span></div>
-    <div class="step"><span class="n">3</span><span>Add the two lines below to <code>~/.bashrc</code>, then <code>start</code></span></div>
+    <div class="step"><span class="n">3</span><span>Add the two lines below to <code>~/.bashrc</code></span></div>
+    <div class="step"><span class="n">4</span><span>Run <code>autore test-telegram</code> — setup is complete when the test message arrives</span></div>
   </div>
   <pre><code>export TELEGRAM_BOT_TOKEN="123456:ABC..."
 export TELEGRAM_CHAT_ID="123456789"</code></pre>
@@ -230,36 +260,35 @@ export TELEGRAM_CHAT_ID="123456789"</code></pre>
 <section id="how">
   <h2><span class="num">05</span>How it works</h2>
   <div class="flow">
-    <div class="step"><span class="n">1</span><span>Checks the Claude Code screen in tmux every 30s (last 40 lines; wrapped messages joined with the next 2 lines)</span></div>
+    <div class="step"><span class="n">1</span><span>Checks the AI CLI screen in tmux every 30s (last 40 lines; wrapped messages joined with the next 2 lines)</span></div>
     <div class="arrow">↓</div>
-    <div class="step"><span class="n">2</span><span>Detects the limit message → parses the reset time (implausible times outside the limit window are rejected)</span></div>
+    <div class="step"><span class="n">2</span><span>Detects the limit message → parses the reset time (implausible times outside the limit window are rejected; common provider phrasings — rate limit / too many requests / quota exceeded — are also detected)</span></div>
     <div class="arrow">↓</div>
     <div class="step"><span class="n">3</span><span>Sleeps until reset time + buffer (90s)</span></div>
     <div class="arrow">↓</div>
     <div class="step"><span class="n">4</span><span>Types the resume message into the session → Telegram alert</span></div>
     <div class="arrow">↓</div>
-    <div class="step"><span class="n">5</span><span>If still limited, retries at most 2 times (no message spam)</span></div>
+    <div class="step"><span class="n">5</span><span>If still limited, retries at most twice (avoids spamming the session)</span></div>
   </div>
-  <p>Every detected limit message is collected in <code>~/.autore-samples.log</code>,
-     so if Anthropic changes the message format, the parser can be updated safely
-     (with 16 <code>--selftest</code> regression tests).</p>
+  <p>Every detected limit message is collected in <code>~/.autore-samples.log</code>, so the parser
+     can be updated safely if message formats change (<code>--selftest</code>: 16 regression tests).</p>
 </section>
 
 <section id="legal">
   <h2><span class="num">06</span>Legal Review &amp; Disclaimer</h2>
   <ul class="legal">
-    <li>This tool is a <strong>simple wait-and-resume script</strong>: it reads the limit notice Claude Code
+    <li>autore is a <strong>simple wait-and-resume script</strong>: it reads the limit notice an AI CLI
         <strong>already displays on screen</strong>, waits until the stated reset time, and resumes
         <strong>your own</strong> terminal session.</li>
-    <li>It does <strong>not bypass or circumvent</strong> usage limits, makes no additional API calls to
-        Anthropic services, and does not alter authentication or access controls. It only resumes
+    <li>It does <strong>not</strong> bypass or circumvent usage limits, makes no additional API calls,
+        and does not alter authentication or access controls. It only resumes the session
         <strong>after</strong> the limit has legitimately reset.</li>
     <li>This is an <strong>unofficial open-source project with no affiliation to Anthropic</strong>;
-        it is not endorsed, supported, or approved by Anthropic. "Claude" and "Claude Code" are
-        trademarks of Anthropic.</li>
-    <li><strong>You are solely responsible</strong> for reviewing and complying with Anthropic's Terms of
-        Service and Usage Policies, and for all consequences of use.</li>
-    <li>The software is provided <strong>"as is", without warranty of any kind</strong> (MIT License).</li>
+        it is not endorsed, supported, or approved by Anthropic. "Claude" and "Claude Code" are trademarks of Anthropic.</li>
+    <li><strong>You are solely responsible</strong> for reviewing and complying with the Terms of Service
+        and Usage Policies of each AI CLI provider you use (Anthropic, OpenCode, etc.). All consequences
+        of use are your own responsibility.</li>
+    <li>This software is provided <strong>"as is", without warranty of any kind</strong> (MIT License).</li>
   </ul>
 </section>
 
@@ -267,9 +296,9 @@ export TELEGRAM_CHAT_ID="123456789"</code></pre>
 
 <footer>
   <div class="container">
-    <p>MIT License · Unofficial tool (not affiliated with Anthropic) ·
+    <p>MIT License · Unofficial tool (not affiliated with Anthropic or any AI CLI provider) ·
        <a href="https://github.com/2pylab/autore">GitHub</a> ·
-       <a href="https://github.com/2pylab/autore/issues">Issues</a></p>
+       <a href="https://github.com/2pylab/autore/issues">Report an issue</a></p>
   </div>
 </footer>
 
