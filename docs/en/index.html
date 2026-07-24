@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>claude-auto-resume — Auto-resume after Claude Code usage limits</title>
+<meta name="description" content="A lightweight watcher that waits out Claude Code's 5-hour usage limit and automatically resumes your work when it resets.">
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e; --accent: #d97757; --accent2: #f0a58a;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.7;
+  }
+  a { color: var(--accent2); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .container { max-width: 920px; margin: 0 auto; padding: 0 20px; }
+
+  nav {
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(13,17,23,.92); backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+  nav .container { display: flex; align-items: center; gap: 18px; height: 56px; flex-wrap: wrap; }
+  nav .logo { font-weight: 700; color: var(--text); font-family: ui-monospace, monospace; }
+  nav .links { display: flex; gap: 14px; margin-left: auto; font-size: 14px; flex-wrap: wrap; }
+  nav .links a { color: var(--muted); }
+  nav .links a:hover { color: var(--text); text-decoration: none; }
+  .lang { border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px; }
+
+  .hero { text-align: center; padding: 72px 20px 48px; }
+  .hero h1 { font-size: 42px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .hero h1 .dash { color: var(--accent); }
+  .hero p.tagline { color: var(--muted); font-size: 18px; margin: 16px auto 28px; max-width: 640px; }
+  .badges { display: flex; gap: 8px; justify-content: center; margin-bottom: 28px; flex-wrap: wrap; }
+  .badge {
+    font-size: 12px; color: var(--muted);
+    border: 1px solid var(--border); border-radius: 999px; padding: 3px 12px;
+  }
+  .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    display: inline-block; padding: 12px 24px; border-radius: 8px; font-weight: 600;
+    border: 1px solid var(--border); color: var(--text); background: var(--surface);
+  }
+  .btn:hover { text-decoration: none; border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  section { padding: 48px 0; border-top: 1px solid var(--border); }
+  h2 { font-size: 26px; margin-bottom: 8px; }
+  h2 .num { color: var(--accent); font-family: ui-monospace, monospace; margin-right: 8px; }
+  .sub { color: var(--muted); margin-bottom: 24px; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 18px;
+  }
+  .card h3 { font-size: 16px; margin-bottom: 6px; }
+  .card p { color: var(--muted); font-size: 14px; }
+
+  pre {
+    position: relative; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px; overflow-x: auto; margin: 14px 0;
+  }
+  pre code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; }
+  .copy-btn {
+    position: absolute; top: 8px; right: 8px;
+    background: var(--bg); color: var(--muted); border: 1px solid var(--border);
+    border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer;
+  }
+  .copy-btn:hover { color: var(--text); border-color: var(--accent); }
+
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 14px; }
+  th, td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; }
+  th { background: var(--surface); }
+  td code, p code, li code {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 4px;
+    padding: 1px 6px; font-family: ui-monospace, monospace; font-size: 13px;
+  }
+
+  .flow { display: flex; flex-direction: column; gap: 10px; margin: 18px 0; }
+  .flow .step {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 18px; display: flex; gap: 14px; align-items: baseline;
+  }
+  .flow .step .n { color: var(--accent); font-family: ui-monospace, monospace; font-weight: 700; }
+  .flow .arrow { text-align: center; color: var(--muted); }
+
+  .notice {
+    border: 1px solid var(--accent); border-radius: 10px; padding: 18px;
+    background: rgba(217,119,87,.07); margin: 14px 0; font-size: 14px;
+  }
+  ul.legal li { margin: 8px 0 8px 20px; }
+
+  footer {
+    border-top: 1px solid var(--border); padding: 32px 0; text-align: center;
+    color: var(--muted); font-size: 14px;
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="container">
+    <span class="logo">claude-auto-resume</span>
+    <div class="links">
+      <a href="#features">Features</a>
+      <a href="#install">Install</a>
+      <a href="#usage">Usage</a>
+      <a href="#telegram">Telegram</a>
+      <a href="#legal">Legal</a>
+      <a href="https://github.com/2pylab/claude-auto-resume">GitHub</a>
+      <a class="lang" href="../">한국어</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <h1>claude<span class="dash">-auto-</span>resume</h1>
+  <p class="tagline">
+    Hit Claude Code's 5-hour usage limit? This lightweight watcher waits for the reset
+    and <strong>automatically resumes your work</strong>.
+  </p>
+  <div class="badges">
+    <span class="badge">Linux · macOS</span>
+    <span class="badge">bash 3.2+</span>
+    <span class="badge">Telegram alerts</span>
+    <span class="badge">MIT License</span>
+  </div>
+  <div class="cta">
+    <a class="btn primary" href="#install">Install now</a>
+    <a class="btn" href="https://github.com/2pylab/claude-auto-resume">GitHub repo</a>
+  </div>
+</header>
+
+<main class="container">
+
+<section id="features">
+  <h2><span class="num">01</span>Features</h2>
+  <p class="sub">No more babysitting the rate limit — when it resets, your session picks up where it left off.</p>
+  <div class="grid">
+    <div class="card"><h3>🔁 Auto-resume</h3><p>Detect limit → parse reset time → sleep → type the resume message into your session. Conversation context stays intact.</p></div>
+    <div class="card"><h3>⏱ Layered time parser</h3><p>Handles <code>3pm</code>, <code>3:30 PM</code>, <code>15:00</code>, <code>Jul 28 at 3pm</code> (weekly limits), <code>tomorrow at 9am</code>, midnight/year rollover, and wrapped lines.</p></div>
+    <div class="card"><h3>🛡 Safety guards</h3><p>Dedupes identical limit messages, rejects implausible times (limit-window validation), periodic retry on parse failure.</p></div>
+    <div class="card"><h3>📨 Telegram alerts</h3><p>Bot notifications on limit detection, resume, and retry (optional).</p></div>
+    <div class="card"><h3>🧪 Built-in self-test</h3><p><code>--selftest</code> runs 16 parser unit tests.</p></div>
+    <div class="card"><h3>📦 One-line install</h3><p>Installer with dependency checks and self-test. Linux and macOS supported.</p></div>
+  </div>
+</section>
+
+<section id="install">
+  <h2><span class="num">02</span>Install</h2>
+  <p class="sub">Dependencies: <code>tmux</code>, GNU <code>date</code> (macOS: <code>brew install coreutils</code>), optional <code>curl</code> (for Telegram)</p>
+
+  <h3>One-liner</h3>
+  <pre><code>curl -fsSL https://raw.githubusercontent.com/2pylab/claude-auto-resume/main/install.sh | bash</code></pre>
+
+  <h3>Or clone and install</h3>
+  <pre><code>git clone https://github.com/2pylab/claude-auto-resume.git
+cd claude-auto-resume
+./install.sh</code></pre>
+
+  <table>
+    <tr><th>Command</th><th>Description</th></tr>
+    <tr><td><code>./install.sh</code></td><td>Install to <code>~/.local/bin</code> (default)</td></tr>
+    <tr><td><code>./install.sh --system</code></td><td>System-wide install to <code>/usr/local/bin</code></td></tr>
+    <tr><td><code>./install.sh --prefix=PATH</code></td><td>Install to a custom path</td></tr>
+    <tr><td><code>./install.sh --uninstall</code></td><td>Uninstall</td></tr>
+  </table>
+</section>
+
+<section id="usage">
+  <h2><span class="num">03</span>Usage</h2>
+  <p class="sub">Two commands — start the watcher, then use Claude Code as usual.</p>
+  <pre><code>claude-auto-resume start     # ① start background watcher
+claude-auto-resume attach    # ② attach to the Claude Code session → work as usual</code></pre>
+
+  <table>
+    <tr><th>Command</th><th>Description</th></tr>
+    <tr><td><code>start [options]</code></td><td>Start background watcher (creates the tmux session if missing)</td></tr>
+    <tr><td><code>stop</code></td><td>Stop the watcher</td></tr>
+    <tr><td><code>status</code></td><td>Watcher state + session + Telegram config + recent logs</td></tr>
+    <tr><td><code>logs [-f]</code></td><td>Show logs (<code>-f</code>: follow)</td></tr>
+    <tr><td><code>attach</code></td><td>Attach to the Claude Code tmux session</td></tr>
+    <tr><td><code>run [options]</code></td><td>Foreground watcher (for debugging)</td></tr>
+    <tr><td><code>--selftest</code></td><td>16 parser unit tests</td></tr>
+  </table>
+
+  <h3>Common options (or matching env vars)</h3>
+  <table>
+    <tr><th>Option</th><th>Default</th><th>Description</th></tr>
+    <tr><td><code>--session NAME</code></td><td><code>claude</code></td><td>tmux session to watch</td></tr>
+    <tr><td><code>--poll SEC</code></td><td><code>30</code></td><td>Screen check interval</td></tr>
+    <tr><td><code>--buffer SEC</code></td><td><code>90</code></td><td>Extra wait after reset time</td></tr>
+    <tr><td><code>--fallback SEC</code></td><td><code>900</code></td><td>Retry delay on parse failure</td></tr>
+    <tr><td><code>--max-resends N</code></td><td><code>2</code></td><td>Max resends for the same limit message</td></tr>
+    <tr><td><code>--message TEXT</code></td><td>Korean "keep going"</td><td>Message typed after reset</td></tr>
+    <tr><td><code>--dry-run</code></td><td>—</td><td>Log only, never send (testing)</td></tr>
+  </table>
+  <p>Full options: <code>claude-auto-resume --help</code> or the <a href="https://github.com/2pylab/claude-auto-resume#readme">README</a>.</p>
+</section>
+
+<section id="telegram">
+  <h2><span class="num">04</span>Telegram alerts (optional)</h2>
+  <p class="sub">Get notified on limit detection, resume, and retry.</p>
+  <div class="flow">
+    <div class="step"><span class="n">1</span><span>Message <a href="https://t.me/BotFather">@BotFather</a> → <code>/newbot</code> → get a bot token</span></div>
+    <div class="step"><span class="n">2</span><span>Start a chat with your bot, then get your chat ID via <a href="https://t.me/userinfobot">@userinfobot</a></span></div>
+    <div class="step"><span class="n">3</span><span>Add the two lines below to <code>~/.bashrc</code>, then <code>start</code></span></div>
+  </div>
+  <pre><code>export TELEGRAM_BOT_TOKEN="123456:ABC..."
+export TELEGRAM_CHAT_ID="123456789"</code></pre>
+  <div class="notice">⚠️ Passing the token via <code>--telegram-token</code> can expose it in <code>ps</code> output — environment variables are recommended.</div>
+</section>
+
+<section id="how">
+  <h2><span class="num">05</span>How it works</h2>
+  <div class="flow">
+    <div class="step"><span class="n">1</span><span>Checks the Claude Code screen in tmux every 30s (last 40 lines; wrapped messages joined with the next 2 lines)</span></div>
+    <div class="arrow">↓</div>
+    <div class="step"><span class="n">2</span><span>Detects the limit message → parses the reset time (implausible times outside the limit window are rejected)</span></div>
+    <div class="arrow">↓</div>
+    <div class="step"><span class="n">3</span><span>Sleeps until reset time + buffer (90s)</span></div>
+    <div class="arrow">↓</div>
+    <div class="step"><span class="n">4</span><span>Types the resume message into the session → Telegram alert</span></div>
+    <div class="arrow">↓</div>
+    <div class="step"><span class="n">5</span><span>If still limited, retries at most 2 times (no message spam)</span></div>
+  </div>
+  <p>Every detected limit message is collected in <code>~/.claude-auto-resume-samples.log</code>,
+     so if Anthropic changes the message format, the parser can be updated safely
+     (with 16 <code>--selftest</code> regression tests).</p>
+</section>
+
+<section id="legal">
+  <h2><span class="num">06</span>Legal Review &amp; Disclaimer</h2>
+  <ul class="legal">
+    <li>This tool is a <strong>simple wait-and-resume script</strong>: it reads the limit notice Claude Code
+        <strong>already displays on screen</strong>, waits until the stated reset time, and resumes
+        <strong>your own</strong> terminal session.</li>
+    <li>It does <strong>not bypass or circumvent</strong> usage limits, makes no additional API calls to
+        Anthropic services, and does not alter authentication or access controls. It only resumes
+        <strong>after</strong> the limit has legitimately reset.</li>
+    <li>This is an <strong>unofficial open-source project with no affiliation to Anthropic</strong>;
+        it is not endorsed, supported, or approved by Anthropic. "Claude" and "Claude Code" are
+        trademarks of Anthropic.</li>
+    <li><strong>You are solely responsible</strong> for reviewing and complying with Anthropic's Terms of
+        Service and Usage Policies, and for all consequences of use.</li>
+    <li>The software is provided <strong>"as is", without warranty of any kind</strong> (MIT License).</li>
+  </ul>
+</section>
+
+</main>
+
+<footer>
+  <div class="container">
+    <p>MIT License · Unofficial tool (not affiliated with Anthropic) ·
+       <a href="https://github.com/2pylab/claude-auto-resume">GitHub</a> ·
+       <a href="https://github.com/2pylab/claude-auto-resume/issues">Issues</a></p>
+  </div>
+</footer>
+
+<script>
+document.querySelectorAll('pre').forEach(function (pre) {
+  var btn = document.createElement('button');
+  btn.className = 'copy-btn';
+  btn.textContent = 'Copy';
+  btn.onclick = function () {
+    var code = pre.querySelector('code');
+    navigator.clipboard.writeText(code ? code.innerText : pre.innerText).then(function () {
+      btn.textContent = 'Copied!';
+      setTimeout(function () { btn.textContent = 'Copy'; }, 1500);
+    });
+  };
+  pre.appendChild(btn);
+});
+</script>
+
+</body>
+</html>

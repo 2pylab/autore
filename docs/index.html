@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>claude-auto-resume — Claude Code 사용량 제한 자동 재개</title>
+<meta name="description" content="Claude Code 5시간 사용량 제한에 걸리면 리셋 시각까지 대기했다가 자동으로 작업을 이어가는 경량 감시 도구">
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e; --accent: #d97757; --accent2: #f0a58a;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", Roboto, sans-serif;
+    line-height: 1.7;
+  }
+  a { color: var(--accent2); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .container { max-width: 920px; margin: 0 auto; padding: 0 20px; }
+
+  nav {
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(13,17,23,.92); backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+  nav .container { display: flex; align-items: center; gap: 18px; height: 56px; flex-wrap: wrap; }
+  nav .logo { font-weight: 700; color: var(--text); font-family: ui-monospace, monospace; }
+  nav .links { display: flex; gap: 14px; margin-left: auto; font-size: 14px; flex-wrap: wrap; }
+  nav .links a { color: var(--muted); }
+  nav .links a:hover { color: var(--text); text-decoration: none; }
+  .lang { border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px; }
+
+  .hero { text-align: center; padding: 72px 20px 48px; }
+  .hero h1 { font-size: 42px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .hero h1 .dash { color: var(--accent); }
+  .hero p.tagline { color: var(--muted); font-size: 18px; margin: 16px auto 28px; max-width: 640px; }
+  .badges { display: flex; gap: 8px; justify-content: center; margin-bottom: 28px; flex-wrap: wrap; }
+  .badge {
+    font-size: 12px; color: var(--muted);
+    border: 1px solid var(--border); border-radius: 999px; padding: 3px 12px;
+  }
+  .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    display: inline-block; padding: 12px 24px; border-radius: 8px; font-weight: 600;
+    border: 1px solid var(--border); color: var(--text); background: var(--surface);
+  }
+  .btn:hover { text-decoration: none; border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  section { padding: 48px 0; border-top: 1px solid var(--border); }
+  h2 { font-size: 26px; margin-bottom: 8px; }
+  h2 .num { color: var(--accent); font-family: ui-monospace, monospace; margin-right: 8px; }
+  .sub { color: var(--muted); margin-bottom: 24px; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 18px;
+  }
+  .card h3 { font-size: 16px; margin-bottom: 6px; }
+  .card p { color: var(--muted); font-size: 14px; }
+
+  pre {
+    position: relative; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px; overflow-x: auto; margin: 14px 0;
+  }
+  pre code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; }
+  .copy-btn {
+    position: absolute; top: 8px; right: 8px;
+    background: var(--bg); color: var(--muted); border: 1px solid var(--border);
+    border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer;
+  }
+  .copy-btn:hover { color: var(--text); border-color: var(--accent); }
+
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 14px; }
+  th, td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; }
+  th { background: var(--surface); }
+  td code, p code, li code {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 4px;
+    padding: 1px 6px; font-family: ui-monospace, monospace; font-size: 13px;
+  }
+
+  .flow { display: flex; flex-direction: column; gap: 10px; margin: 18px 0; }
+  .flow .step {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 18px; display: flex; gap: 14px; align-items: baseline;
+  }
+  .flow .step .n { color: var(--accent); font-family: ui-monospace, monospace; font-weight: 700; }
+  .flow .arrow { text-align: center; color: var(--muted); }
+
+  .notice {
+    border: 1px solid var(--accent); border-radius: 10px; padding: 18px;
+    background: rgba(217,119,87,.07); margin: 14px 0; font-size: 14px;
+  }
+  ol.legal li, ul.legal li { margin: 8px 0 8px 20px; }
+
+  footer {
+    border-top: 1px solid var(--border); padding: 32px 0; text-align: center;
+    color: var(--muted); font-size: 14px;
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="container">
+    <span class="logo">claude-auto-resume</span>
+    <div class="links">
+      <a href="#features">기능</a>
+      <a href="#install">설치</a>
+      <a href="#usage">사용법</a>
+      <a href="#telegram">텔레그램</a>
+      <a href="#legal">법률 고지</a>
+      <a href="https://github.com/2pylab/claude-auto-resume">GitHub</a>
+      <a class="lang" href="en/">EN</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <h1>claude<span class="dash">-auto-</span>resume</h1>
+  <p class="tagline">
+    Claude Code의 5시간 사용량 제한에 걸리면, 리셋 시각까지 대기했다가
+    <strong>자동으로 작업을 이어가는</strong> 경량 감시 도구
+  </p>
+  <div class="badges">
+    <span class="badge">Linux · macOS</span>
+    <span class="badge">bash 3.2+</span>
+    <span class="badge">텔레그램 알림</span>
+    <span class="badge">MIT License</span>
+  </div>
+  <div class="cta">
+    <a class="btn primary" href="#install">지금 설치하기</a>
+    <a class="btn" href="https://github.com/2pylab/claude-auto-resume">GitHub 저장소</a>
+  </div>
+</header>
+
+<main class="container">
+
+<section id="features">
+  <h2><span class="num">01</span>기능</h2>
+  <p class="sub">제한이 걸려도 잠이나 출근을 미룰 필요 없이, 리셋되면 알아서 작업이 다시 시작됩니다.</p>
+  <div class="grid">
+    <div class="card"><h3>🔁 자동 재개</h3><p>제한 감지 → 리셋 시각 파싱 → 대기 → 세션에 재개 메시지 자동 입력. 대화 맥락 그대로 복귀.</p></div>
+    <div class="card"><h3>⏱ 다단계 시각 파서</h3><p><code>3pm</code>, <code>3:30 PM</code>, <code>15:00</code>, <code>Jul 28 at 3pm</code>(주간 제한), <code>tomorrow at 9am</code>, 자정/연도 넘김, 화면 줄바꿈 처리.</p></div>
+    <div class="card"><h3>🛡 안전장치</h3><p>같은 제한 메시지 중복 처리 방지, 모순된 시각 거부(제한 창 검증), 파싱 실패 시 주기적 재시도.</p></div>
+    <div class="card"><h3>📨 텔레그램 알림</h3><p>제한 감지 / 재개 완료 / 재시도 시 봇 알림 (선택 사항).</p></div>
+    <div class="card"><h3>🧪 자가진단 내장</h3><p><code>--selftest</code>로 파서 단위 테스트 16종 실행.</p></div>
+    <div class="card"><h3>📦 원라인 설치</h3><p>의존성 검사 + 자가진단 포함 설치 스크립트. Linux와 macOS 모두 지원.</p></div>
+  </div>
+</section>
+
+<section id="install">
+  <h2><span class="num">02</span>설치</h2>
+  <p class="sub">의존성: <code>tmux</code>, GNU <code>date</code>(macOS는 <code>brew install coreutils</code>), 선택적으로 <code>curl</code>(텔레그램용)</p>
+
+  <h3>원라인 설치</h3>
+  <pre><code>curl -fsSL https://raw.githubusercontent.com/2pylab/claude-auto-resume/main/install.sh | bash</code></pre>
+
+  <h3>또는 클론 후 설치</h3>
+  <pre><code>git clone https://github.com/2pylab/claude-auto-resume.git
+cd claude-auto-resume
+./install.sh</code></pre>
+
+  <table>
+    <tr><th>명령</th><th>설명</th></tr>
+    <tr><td><code>./install.sh</code></td><td><code>~/.local/bin</code>에 설치 (기본)</td></tr>
+    <tr><td><code>./install.sh --system</code></td><td><code>/usr/local/bin</code>에 시스템 전체 설치</td></tr>
+    <tr><td><code>./install.sh --prefix=경로</code></td><td>지정 경로에 설치</td></tr>
+    <tr><td><code>./install.sh --uninstall</code></td><td>제거</td></tr>
+  </table>
+</section>
+
+<section id="usage">
+  <h2><span class="num">03</span>사용법</h2>
+  <p class="sub">두 명령이면 끝 — 감시를 켜고, 평소처럼 Claude Code를 쓰세요.</p>
+  <pre><code>claude-auto-resume start     # ① 백그라운드 감시 시작
+claude-auto-resume attach    # ② Claude Code 세션 접속 → 평소처럼 작업</code></pre>
+
+  <table>
+    <tr><th>명령</th><th>설명</th></tr>
+    <tr><td><code>start [옵션]</code></td><td>백그라운드 감시 시작 (tmux 세션 없으면 자동 생성)</td></tr>
+    <tr><td><code>stop</code></td><td>감시 중지</td></tr>
+    <tr><td><code>status</code></td><td>감시 상태 + 세션 + 텔레그램 설정 + 최근 로그</td></tr>
+    <tr><td><code>logs [-f]</code></td><td>로그 보기 (<code>-f</code>: 실시간)</td></tr>
+    <tr><td><code>attach</code></td><td>Claude Code tmux 세션 접속</td></tr>
+    <tr><td><code>run [옵션]</code></td><td>포그라운드 감시 (디버깅용)</td></tr>
+    <tr><td><code>--selftest</code></td><td>파서 단위 테스트 16종</td></tr>
+  </table>
+
+  <h3>주요 옵션 (또는 동명 환경변수)</h3>
+  <table>
+    <tr><th>옵션</th><th>기본값</th><th>설명</th></tr>
+    <tr><td><code>--session NAME</code></td><td><code>claude</code></td><td>감시할 tmux 세션명</td></tr>
+    <tr><td><code>--poll SEC</code></td><td><code>30</code></td><td>화면 확인 주기</td></tr>
+    <tr><td><code>--buffer SEC</code></td><td><code>90</code></td><td>리셋 후 여유 대기</td></tr>
+    <tr><td><code>--fallback SEC</code></td><td><code>900</code></td><td>시각 파싱 실패 시 재시도 대기</td></tr>
+    <tr><td><code>--max-resends N</code></td><td><code>2</code></td><td>같은 제한 메시지 최대 재전송</td></tr>
+    <tr><td><code>--message TEXT</code></td><td><code>계속 이어서 진행해줘</code></td><td>리셋 후 자동 입력 메시지</td></tr>
+    <tr><td><code>--dry-run</code></td><td>—</td><td>실제 전송 없이 로그만 (테스트용)</td></tr>
+  </table>
+  <p>전체 옵션은 <code>claude-auto-resume --help</code> 또는 <a href="https://github.com/2pylab/claude-auto-resume#readme">README</a> 참조.</p>
+</section>
+
+<section id="telegram">
+  <h2><span class="num">04</span>텔레그램 알림 (선택)</h2>
+  <p class="sub">제한 감지, 재개 완료, 재시도 때마다 텔레그램으로 알림을 받습니다.</p>
+  <div class="flow">
+    <div class="step"><span class="n">1</span><span>텔레그램 <a href="https://t.me/BotFather">@BotFather</a> → <code>/newbot</code> → 봇 토큰 발급</span></div>
+    <div class="step"><span class="n">2</span><span>봇과 대화 시작 후 <a href="https://t.me/userinfobot">@userinfobot</a> 등으로 채팅 ID 확인</span></div>
+    <div class="step"><span class="n">3</span><span><code>~/.bashrc</code>에 아래 두 줄 추가 후 <code>start</code></span></div>
+  </div>
+  <pre><code>export TELEGRAM_BOT_TOKEN="123456:ABC..."
+export TELEGRAM_CHAT_ID="123456789"</code></pre>
+  <div class="notice">⚠️ 토큰을 <code>--telegram-token</code> 인자로 넘기면 <code>ps</code> 출력에 노출될 수 있으니 환경변수를 권장합니다.</div>
+</section>
+
+<section id="how">
+  <h2><span class="num">05</span>동작 원리</h2>
+  <div class="flow">
+    <div class="step"><span class="n">1</span><span>tmux 세션의 Claude Code 화면을 30초마다 확인 (하단 40줄, 줄바꿈 메시지는 2줄 더 묶어서 파싱)</span></div>
+    <div class="arrow">↓</div>
+    <div class="step"><span class="n">2</span><span>제한 메시지 감지 → 리셋 시각 파싱 (제한 창 밖의 모순된 시각은 거부)</span></div>
+    <div class="arrow">↓</div>
+    <div class="step"><span class="n">3</span><span>리셋 시각 + 버퍼(90초)까지 대기</span></div>
+    <div class="arrow">↓</div>
+    <div class="step"><span class="n">4</span><span>세션에 재개 메시지 자동 입력 → 텔레그램 알림</span></div>
+    <div class="arrow">↓</div>
+    <div class="step"><span class="n">5</span><span>여전히 제한 상태면 최대 2회까지만 재시도 (메시지 도배 방지)</span></div>
+  </div>
+  <p>감지된 실제 제한 메시지 원문은 <code>~/.claude-auto-resume-samples.log</code>에 자동 수집되어,
+     Anthropic이 메시지 형식을 바꿔도 파서를 안전하게 업데이트할 수 있습니다
+     (<code>--selftest</code> 회귀 테스트 16종).</p>
+</section>
+
+<section id="legal">
+  <h2><span class="num">06</span>법률 검토 및 면책조항</h2>
+  <ul class="legal">
+    <li>이 도구는 Claude Code가 <strong>화면에 이미 표시한</strong> 제한 안내를 읽고, 안낐된 리셋 시각까지
+        <strong>단순 대기</strong>한 뒤 사용자 본인의 세션을 재개하는 <strong>단순 대기·재개 스크립트</strong>입니다.</li>
+    <li>사용량 제한을 <strong>우회하거나 회피하지 않으며</strong>, Anthropic 서비스에 추가 API 요청을 보내지 않고,
+        인증·접근 제어를 변경하지 않습니다. 제한이 해제된 후에만 정상적으로 재개합니다.</li>
+    <li>본 프로젝트는 <strong>Anthropic과 무관한 비공식 오픈소스</strong>이며, Anthropic이 보증·지원하지 않습니다.
+        "Claude", "Claude Code"는 Anthropic의 상표입니다.</li>
+    <li>Anthropic 이용약관·사용 정책 확인 및 준수 책임은 <strong>사용자 본인</strong>에게 있으며,
+        사용으로 인한 모든 결과의 책임도 사용자에게 있습니다.</li>
+    <li>이 소프트웨어는 <strong>어떠한 보증 없이 "있는 그대로"</strong> 제공됩니다 (MIT License).</li>
+  </ul>
+  <div class="notice">
+    <strong>English:</strong> claude-auto-resume is an unofficial script that simply waits for the
+    publicly displayed usage-limit reset time and resumes your own session. It does not bypass any
+    rate limits. Not affiliated with Anthropic. Use at your own risk; you are responsible for
+    complying with Anthropic's Terms of Service. Provided as-is without warranty (MIT).
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="container">
+    <p>MIT License · 비공식 도구 (Anthropic과 무관) ·
+       <a href="https://github.com/2pylab/claude-auto-resume">GitHub</a> ·
+       <a href="https://github.com/2pylab/claude-auto-resume/issues">이슈 제보</a></p>
+  </div>
+</footer>
+
+<script>
+document.querySelectorAll('pre').forEach(function (pre) {
+  var btn = document.createElement('button');
+  btn.className = 'copy-btn';
+  btn.textContent = '복사';
+  btn.onclick = function () {
+    var code = pre.querySelector('code');
+    navigator.clipboard.writeText(code ? code.innerText : pre.innerText).then(function () {
+      btn.textContent = '복사됨!';
+      setTimeout(function () { btn.textContent = '복사'; }, 1500);
+    });
+  };
+  pre.appendChild(btn);
+});
+</script>
+
+</body>
+</html>
