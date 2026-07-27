@@ -83,10 +83,10 @@
     border-radius: 10px; padding: 16px; overflow-x: auto; margin: 14px 0;
   }
   pre code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; }
-  .tok-cmd  { color: #7ee787; }            /* 명령어 */
-  .tok-str  { color: #a5d6ff; }            /* 문자열 */
-  .tok-flag { color: #79c0ff; }            /* 옵션 플래그 */
-  .tok-com  { color: #8b949e; font-style: italic; } /* 주석 */
+  .tok-cmd  { color: #7ee787; }            /* commands */
+  .tok-str  { color: #a5d6ff; }            /* strings */
+  .tok-flag { color: #79c0ff; }            /* option flags */
+  .tok-com  { color: #8b949e; font-style: italic; } /* comments */
   .note { color: var(--muted); font-size: 14px; }
   .copy-btn {
     position: absolute; top: 8px; right: 8px;
@@ -326,7 +326,7 @@ export TELEGRAM_CHAT_ID="123456789"</code></pre>
 </footer>
 
 <script>
-/* bash 스니펫 구문 하이라이팅 — 외부 라이브러리 없이 경량 구현 */
+/* bash snippet syntax highlighting - lightweight, no external library */
 (function () {
   function esc(s) {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #===============================================================================
-# autore 설치기 — Linux / macOS
+# autore installer - Linux / macOS
 #
-#   ./install.sh                  ~/.local/bin에 설치
-#   ./install.sh --system         /usr/local/bin에 설치 (sudo 필요할 수 있음)
-#   ./install.sh --prefix=PATH    지정 경로에 설치
-#   ./install.sh --uninstall      제거
+#   ./install.sh                  install into ~/.local/bin
+#   ./install.sh --system         install into /usr/local/bin (may need sudo)
+#   ./install.sh --prefix=PATH    install into the given directory
+#   ./install.sh --uninstall      uninstall
 #===============================================================================
 set -euo pipefail
 
@@ -34,7 +34,7 @@ REPO_RAW="https://raw.githubusercontent.com/2pylab/autore/main"
 
 say() { printf '%s\n' "$*"; }
 
-# curl 파이프 실행(curl ... | bash) 등으로 본체 스크립트가 곁에 없으면 저장소에서 다운로드
+# When the main script is not next to us (e.g. piped install: curl ... | bash), fetch it from the repo
 if [[ ! -f $SRC ]] && (( ! UNINSTALL )); then
   command -v curl >/dev/null 2>&1 || { say "오류: 다운로드에 curl이 필요합니다" >&2; exit 1; }
   TMP_DIR=$(mktemp -d)
@@ -44,7 +44,7 @@ if [[ ! -f $SRC ]] && (( ! UNINSTALL )); then
   SRC="$TMP_DIR/autore.sh"
 fi
 
-#--- 제거 ------------------------------------------------------------------------
+#--- Uninstall -------------------------------------------------------------------
 if (( UNINSTALL )); then
   if [[ -f "$PREFIX/$NAME" ]]; then
     rm -f "$PREFIX/$NAME"
@@ -52,7 +52,7 @@ if (( UNINSTALL )); then
   else
     say "설치되어 있지 않음: $PREFIX/$NAME"
   fi
-  # 구버전(claude-auto-resume) 잔여 설치본도 함께 제거
+  # Also remove a leftover install of the old claude-auto-resume
   if [[ -f "$PREFIX/claude-auto-resume" ]]; then
     rm -f "$PREFIX/claude-auto-resume"
     say "✓ 구버전 제거: $PREFIX/claude-auto-resume"
@@ -60,7 +60,7 @@ if (( UNINSTALL )); then
   exit 0
 fi
 
-#--- 의존성 검사 -------------------------------------------------------------------
+#--- Dependency check ------------------------------------------------------------
 os=$(uname -s)
 ok=1
 say "== 의존성 검사 =="
@@ -94,7 +94,7 @@ if (( ! ok )); then
   exit 1
 fi
 
-#--- 설치 -------------------------------------------------------------------------
+#--- Install ---------------------------------------------------------------------
 NEW_VER=$(sed -n 's/^VERSION="\([^"]*\)".*/\1/p' "$SRC" | head -n 1)
 OLD_VER=""
 [[ -f $PREFIX/$NAME ]] && \
@@ -103,7 +103,7 @@ OLD_VER=""
 mkdir -p "$PREFIX"
 cp "$SRC" "$PREFIX/$NAME"
 chmod +x "$PREFIX/$NAME"
-# 구버전(claude-auto-resume) 설치본이 남아 있으면 정리
+# Clean up an old claude-auto-resume install if one is still around
 if [[ -f "$PREFIX/claude-auto-resume" ]]; then
   rm -f "$PREFIX/claude-auto-resume"
   say "✓ 구버전 정리: $PREFIX/claude-auto-resume 삭제"
