@@ -23,7 +23,7 @@
 #===============================================================================
 set -uo pipefail
 
-VERSION="2.4.0"
+VERSION="2.4.1"
 REPO_RAW="${REPO_RAW:-https://raw.githubusercontent.com/2pylab/autore/main}"
 
 #--- 스크립트 절대 경로 (macOS 호환: readlink -f 미사용) -------------------------
@@ -881,11 +881,15 @@ selftest() {
 
   # 날짜 지정 표현은 GNU date가 '실제 오늘'을 기준으로 해석하므로
   # 테스트 문구/기대값도 실제 오늘 기준으로 만들어 어느 날에 돌려도 통과하게 한다.
-  local D0 D1 D4 M4
+  local D0 D1 D4 M4 can_date=1
   D0=$("$DATE" '+%F')                          # 오늘
   D1=$("$DATE" -d 'tomorrow' '+%F')            # 내일
   D4=$("$DATE" -d 'today +4 days' '+%F')       # 4일 뒤 (주간 제한 시나리오)
-  M4=$("$DATE" -d 'today +4 days' '+%b %-d')   # "Jul 31" 형식
+  # 월 이름은 반드시 C 로케일로 생성 — GNU date의 -d 파서는 영어 월 이름만 이해하므로
+  # 한국어 로케일에서 '%b'가 "7월"이 되면 테스트 입력 자체가 파싱 불가가 된다
+  M4=$(LC_ALL=C "$DATE" -d 'today +4 days' '+%b %-d')   # "Jul 31" 형식
+  # 환경에 따라 영어 월 표현을 못 읽는 date가 있으면 해당 항목은 건너뛴다 (업데이트 차단 방지)
+  "$DATE" -d "$M4 3pm" +%s >/dev/null 2>&1 || can_date=0
 
   #--- 베어 시각 ---
   check "3pm 기본"       "Claude usage limit reached. Your limit will reset at 3pm" "$D0 09:54" "$D0 15:00"
@@ -899,9 +903,13 @@ selftest() {
   check "모순 시각 거부"  "Your limit will reset at 11am"                            "$D0 15:00" FAIL
   check "파싱 불가 거부"  "Claude usage limit reached"                               "$D0 15:00" FAIL
   #--- 날짜 지정 (주간 제한 등) ---
-  check "날짜 지정"      "Your weekly usage limit will reset on $M4 at 3pm"         "$D0 15:00" "$D4 15:00"
+  if (( can_date )); then
+    check "날짜 지정"    "Your weekly usage limit will reset on $M4 at 3pm"         "$D0 15:00" "$D4 15:00"
+    check "날짜+PM+tz"  "Your limit will reset on $M4 at 3:00 PM (Asia/Seoul)"     "$D0 15:00" "$D4 15:00"
+  else
+    echo "SKIP: 날짜 지정 / 날짜+PM+tz (이 환경의 date가 영어 월 표현을 읽지 못함)"
+  fi
   check "tomorrow"      "Your limit will reset tomorrow at 9am"                    "$D0 15:00" "$D1 09:00"
-  check "날짜+PM+tz"    "Your limit will reset on $M4 at 3:00 PM (Asia/Seoul)"     "$D0 15:00" "$D4 15:00"
   check "날짜 모순 거부"  "Your limit will reset on Jul 88 at 3pm"                  "$D0 15:00" FAIL
   #--- 줄바꿈(화면 wrap) ---
   check "줄바꿈 메시지"   $'Your limit will reset at\n3:30pm'                        "$D0 09:54" "$D0 15:30"
