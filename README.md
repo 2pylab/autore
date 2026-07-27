@@ -15,9 +15,12 @@ tmux 세션에서 실행 중인 AI CLI 화면을 주기적으로 확인하다가
 - 🔁 **자동 재개** — 제한 감지 → 리셋 시각 파싱 → 대기 → 세션에 자동 입력
 - 🤖 **멀티 CLI** — `--cli` 옵션으로 다른 AI CLI도 감시 가능 (단, OpenCode는 자체 재시도가 내장되어 있어 대부분 불필요 — 텔레그램 알림 목적 등에 유용)
 - ⏱ **다단계 시각 파서** — `3pm`, `3:30 PM`, `15:00`, `Jul 28 at 3pm`(주간 제한), `tomorrow at 9am`, 자정/연도 넘김, 화면 줄바꿈까지 처리
+- ⏸ **중단 시점 표시** — 제한에 걸린 순간의 화면을 스냅샷으로 저장. `status`로 "언제 멈췄고 언제 이어지는지", `last`로 "무엇을 하다 멈췄는지" 확인
 - 🛡 **안전장치** — 같은 제한 메시지 중복 처리 방지, 모순된 시각 거부(5시간 창 검증), 파싱 실패 시 주기적 재시도
-- 📨 **텔레그램 알림** — 제한 감지 / 재개 완료 / 재시도 시 봇 알림 (선택 사항)
-- 🧪 **자가진단 내장** — `--selftest`로 파서 단위 테스트 16종 실행
+- 📨 **텔레그램 알림 + 범용 훅** — 제한 감지 / 재개 완료 / 재시도 시 봇 알림, `--notify-cmd`로 Slack·Discord·ntfy 등 무엇이든 연결
+- ✅ **재개 확인** — 대기 중 사용자가 직접 이어갔으면 전송을 건너뛰고, 전송 후 화면 반응이 없으면 경고
+- 🔐 **서명된 업데이트** — 배포 SHA256과 대조해 일치할 때만 교체 (자동 업데이트는 검증 실패 시 무조건 중단)
+- 🧪 **자가진단 내장** — `--selftest`로 파서·상태기록 단위 테스트 29종 실행
 - 🐧🍎 **Linux + macOS** — bash 3.2 호환, macOS는 coreutils만 있으면 동작
 - 🌐 **한/영 출력** — OS 로케일에 따라 CLI 메시지·로그·텔레그램 알림이 한국어/영어로 자동 전환
 - 🔄 **자동 업데이트** — 감시 시작 시 + 주기적(기본 24시간)으로 새 버전 확인, 검증 후 자동 교체 (`--no-auto-update`로 끄기)
@@ -104,13 +107,15 @@ autore stop      # 감시 중지
 |---|---|
 | `start [옵션]` | 백그라운드 감시 시작 (tmux 세션이 없으면 자동 생성) |
 | `stop` | 감시 중지 |
-| `status` | 감시 상태 + tmux 세션 + 텔레그램 설정 + 최근 로그 |
+| `status` | 감시 상태 + **중단 시점** + tmux 세션 + 텔레그램 설정 + 최근 로그 |
+| `last` | 마지막 중단 시점 화면 스냅샷 + 중단 이력 |
 | `logs [-f]` | 로그 보기 (`-f`: 실시간) |
 | `attach` | AI CLI tmux 세션 접속 |
 | `run [옵션]` | 포그라운드 감시 (디버깅용) |
 | `update [--check]` | 최신 버전으로 자동 업데이트 (`--check`: 확인만) |
 | `test-telegram` | 텔레그램 연동 테스트 메시지 발송 |
-| `--selftest` | 리셋 시각 파서 단위 테스트 |
+| `checksum` | 배포용 SHA256 출력 (릴리스 시 `autore.sh.sha256` 갱신용) |
+| `--selftest` | 파서·상태기록 단위 테스트 |
 | `version` | 버전 출력 (`--version`과 동일) |
 | `help` | 도움말 출력 (`-h`, `--help`와 동일) |
 
@@ -122,19 +127,35 @@ autore stop      # 감시 중지
 |---|---|---|---|
 | `--session NAME` | `AUTORE_SESSION` | `claude` | 감시할 tmux 세션명 (구 `CLAUDE_SESSION`도 동작) |
 | `--cli CMD` | `CLI_CMD` | `claude` | 세션 생성 시 실행할 AI CLI (예: `opencode`) |
+| `--target PANE` | `TARGET` | — | 특정 window/pane만 감시 (기본: 세션의 모든 pane) |
 | `--poll SEC` | `POLL_SEC` | `30` | 화면 확인 주기 |
 | `--buffer SEC` | `BUFFER_SEC` | `90` | 리셋 시각 후 여유 대기 |
 | `--fallback SEC` | `FALLBACK_SEC` | `900` | 시각 파싱 실패 시 재시도 대기 |
 | `--retry SEC` | `RETRY_SAME_KEY_SEC` | `600` | 같은 제한 메시지 재전송 간격 |
 | `--max-resends N` | `MAX_RESENDS` | `2` | 같은 제한 메시지 최대 재전송 횟수 |
+| `--verify-sec SEC` | `VERIFY_SEC` | `15` | 전송 후 화면 반응 확인 대기 (0이면 확인 안 함) |
+| `--no-clear-input` | `CLEAR_INPUT` | 활성 | 전송 전 입력줄 비우기(C-u) 끄기 |
 | `--message TEXT` | `RESUME_MESSAGE` | `계속 이어서 진행해줘` | 리셋 후 자동 입력할 메시지 |
 | `--log-file PATH` | `LOG_FILE` | `~/.autore.log` | 로그 파일 |
 | `--samples-file PATH` | `SAMPLES_FILE` | `~/.autore-samples.log` | 파싱 샘플 수집 파일 |
+| `--state-file PATH` | `STATE_FILE` | `~/.autore-state` | 중단 시점 상태 파일 |
+| `--break-file PATH` | `BREAK_FILE` | `~/.autore-break.txt` | 중단 시점 화면 스냅샷 |
+| `--breaks-log PATH` | `BREAKS_LOG` | `~/.autore-breaks.log` | 중단 이력 (1건 1줄) |
+| `--pid-file PATH` | `PID_FILE` | `~/.autore.pid` | PID 파일 |
+| `--snapshot-lines N` | `SNAPSHOT_LINES` | `60` | 스냅샷에 남길 화면 줄 수 |
+| `--log-max-bytes N` | `LOG_MAX_BYTES` | `1048576` | 로그 회전 기준 (0이면 회전 안 함) |
 | `--telegram-token T` | `TELEGRAM_BOT_TOKEN` | — | 텔레그램 봇 토큰 |
 | `--telegram-chat-id C` | `TELEGRAM_CHAT_ID` | — | 텔레그램 채팅 ID |
+| `--notify-cmd CMD` | `NOTIFY_CMD` | — | 범용 알림 훅 (Slack/Discord/ntfy 등) |
 | `--no-auto-update` | `AUTO_UPDATE` | 활성 | 자동 업데이트 끄기 |
 | `--auto-update-sec S` | `AUTO_UPDATE_SEC` | `86400` | 자동 업데이트 확인 주기 (초) |
+| `--allow-unverified` | `ALLOW_UNVERIFIED` | — | 체크섬 확인 불가 시에도 수동 업데이트 강행 (`update` 전용) |
 | `--dry-run` | — | — | 실제 전송 없이 로그만 (테스트용) |
+
+> 숫자 옵션에 정수가 아닌 값을 주면 즉시 오류로 막습니다 (`--poll abc` 등).
+> **기본 세션(`claude`)이 아니면 로그·상태 파일 이름에 세션명이 자동으로 붙습니다** —
+> `autore start --session opencode`는 `~/.autore-opencode.log`, `~/.autore-opencode.pid` …를 사용하므로
+> 여러 세션을 동시에 감시해도 상태가 섞이지 않습니다.
 
 ## 텔레그램 알림 설정 (선택)
 
@@ -157,6 +178,37 @@ autore test-telegram   # 테스트 메시지가 오면 설정 완료
 
 > ⚠️ 토큰은 `--telegram-token` CLI 인자로 넘기면 `ps` 출력에 노출될 수 있으니 환경변수 사용을 권장합니다.
 
+## 다른 알림 채널 (`--notify-cmd`)
+
+텔레그램 외의 채널은 알림 훅으로 연결합니다. 메시지가 `$1`로 전달되고, 환경변수 `AUTORE_EVENT`(`started` / `limit` / `limit_noparse` / `resumed` / `resume_skipped` / `resume_noreact` / `resend` / `autoupdate`), `AUTORE_MESSAGE`, `AUTORE_SESSION`, `AUTORE_VERSION`도 함께 넘어옵니다.
+
+```bash
+# Slack
+autore start --notify-cmd 'curl -s -X POST -H "Content-type: application/json" \
+  -d "{\"text\":\"$1\"}" https://hooks.slack.com/services/XXX'
+
+# ntfy
+autore start --notify-cmd 'curl -s -d "$1" https://ntfy.sh/my-topic'
+
+# 데스크톱 알림 (Linux)
+autore start --notify-cmd 'notify-send autore "$1"'
+```
+
+## 업데이트 무결성
+
+`update` / 자동 업데이트는 내려받은 스크립트를 저장소의 `autore.sh.sha256`과 대조합니다.
+
+- **자동 업데이트**: 해시가 다르거나 확인할 수 없으면 **교체하지 않고 기존 버전으로 계속 동작**합니다 (fail-closed).
+- **수동 업데이트**: 해시가 다르면 중단, 확인이 불가능한 경우에만 `autore update --allow-unverified`로 강행할 수 있습니다.
+- 이후 문법 검사와 자가진단까지 통과해야 교체됩니다.
+
+> **릴리스 시 주의:** `autore.sh`를 수정했다면 반드시 체크섬을 다시 만들어 함께 커밋해야 합니다.
+> 갱신을 잊으면 모든 사용자의 자동 업데이트가 (안전하게) 멈춥니다.
+>
+> ```bash
+> ./autore.sh checksum > autore.sh.sha256
+> ```
+
 ## 동작 원리
 
 ```
@@ -171,9 +223,41 @@ autore test-telegram   # 테스트 메시지가 오면 설정 완료
                                      └──────────────────┘
 ```
 
-- 제한 메시지는 화면 하단 40줄에서 검색하며, 줄바꿈된 메시지도 아래 2줄까지 묶어서 파싱합니다.
+- 제한 메시지는 **세션의 모든 pane**에서, 각 화면 하단 40줄을 검색하며, 줄바꿈된 메시지도 아래 2줄까지 묶어서 파싱합니다. 재개 메시지는 제한이 발견된 그 pane으로 전송됩니다 (`--target`으로 고정 가능).
 - 리셋 시각이 5시간 제한 창(베어 시각은 6시간, 날짜 지정은 8일)을 벗어나면 **오파싱으로 간주하고 거부**합니다.
 - 같은 제한 메시지에 대해서는 최대 `MAX_RESENDS`회까지만 재전송해 메시지 도배를 방지합니다.
+
+## 중단 시점 확인
+
+제한에 걸린 **그 순간**을 기록해 둡니다. 자리를 비운 사이에 무슨 일이 있었는지 나중에 확인할 수 있습니다.
+
+```bash
+autore status    # 언제 멈췄고, 언제 이어지는지 (남은 시간 카운트다운)
+autore last      # 멈추기 직전 화면 스냅샷 + 최근 중단 이력
+```
+
+`status` 출력 예:
+
+```
+== 중단 시점 ==
+  ⏸ 중단됨:     2026-07-27 15:04:39 (30분 전)
+     리셋 시각:   2026-07-27 15:49
+     재개 예정:   2026-07-27 15:49:39 (15분 남음)
+     마지막 작업: ● Update(src/app.ts) — 42 additions
+     전체 보기: autore last
+```
+
+재개 후에는 `▶ 재개됨 … (중단 45분)`처럼 **실제로 얼마나 멈춰 있었는지**가 표시되고, 감시가 죽은 채 예정 시각이 지났다면 `(예정 시각 경과)` 경고가 붙습니다.
+
+기록되는 파일:
+
+| 파일 | 내용 |
+|---|---|
+| `~/.autore-state` | 현재 중단 상태(대기/재개/해소) + 중단·리셋·재개 시각 |
+| `~/.autore-break.txt` | 중단 직전 세션 화면 스냅샷 (기본 60줄) |
+| `~/.autore-breaks.log` | 중단 이력 (1건 1줄) |
+
+텔레그램 알림에도 중단 시점의 **마지막 작업 줄**이 함께 전송됩니다.
 
 ## 파싱 샘플 수집 & 파서 업데이트
 
@@ -183,7 +267,7 @@ Anthropic이 메시지 형식을 바꾸면:
 
 1. 샘플 파일에서 새 형식의 `raw:` 줄 확인
 2. 스크립트의 `LIMIT_REGEX` / 파서 정규식 수정
-3. `./autore.sh --selftest` 로 회귀 테스트 (16종)
+3. `./autore.sh --selftest` 로 회귀 테스트 (29종)
 4. 새 형식은 [이슈](https://github.com/2pylab/autore/issues)로 제보해주시면 반영하겠습니다
 
 ## 법률 검토 및 면책조항 (Legal Review & Disclaimer)
@@ -207,7 +291,7 @@ Anthropic이 메시지 형식을 바꾸면:
 
 - 제한 메시지 형식은 Claude Code 영문 UI 및 프로바이더 공통 표현(rate limit, too many requests, quota exceeded) 기준입니다. 형식이 바뀌면 샘플 로그를 보고 파서를 업데이트해야 합니다 (위 섹션 참조).
 - 리셋 시각은 로컬 타임존 기준으로 해석됩니다.
-- 대기 중 사용자가 수동으로 세션을 재개핸도, 예정 시각에 재개 메시지가 한 번 입력될 수 있습니다 (무해하지만 참고).
+- 대기 중 사용자가 직접 세션을 이어가면, 예정 시각에 화면을 다시 확인해 제한이 이미 풀렸으면 재개 메시지를 보내지 않습니다.
 
 ## 라이선스
 

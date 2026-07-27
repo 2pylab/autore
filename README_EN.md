@@ -15,9 +15,12 @@ It periodically checks the screen of an AI CLI session running in tmux. When it 
 - 🔁 **Auto-resume** — detect limit → parse reset time → sleep → type resume message into the session
 - 🤖 **Multi-CLI** — watch other AI CLIs via `--cli` (note: OpenCode has built-in rate-limit retry, so this is mainly useful for Telegram alerts)
 - ⏱ **Layered time parser** — handles `3pm`, `3:30 PM`, `15:00`, `Jul 28 at 3pm` (weekly limits), `tomorrow at 9am`, midnight/year rollover, and line-wrapped messages
+- ⏸ **Interruption point** — snapshots the screen at the moment the limit hit; `status` shows when it stopped and when it resumes, `last` shows what it was doing
 - 🛡 **Safety guards** — dedupes identical limit messages, rejects implausible times (5-hour window validation), periodic retry on parse failure
-- 📨 **Telegram notifications** — bot alerts on limit detection / resume / retry (optional)
-- 🧪 **Built-in self-test** — `--selftest` runs 16 parser unit tests
+- 📨 **Telegram + generic hook** — bot alerts on limit detection / resume / retry, plus `--notify-cmd` for Slack, Discord, ntfy, anything
+- ✅ **Resume verification** — skips sending if you already resumed by hand, and warns when the screen does not react after sending
+- 🔐 **Signed updates** — replaces the script only when it matches the published SHA256 (auto-update aborts on any verification failure)
+- 🧪 **Built-in self-test** — `--selftest` runs 29 parser + state unit tests
 - 🐧🍎 **Linux + macOS** — bash 3.2 compatible; macOS only needs coreutils
 - 🌐 **Bilingual output** — CLI messages, logs, and Telegram alerts follow the OS locale (Korean/English)
 - 🔄 **Auto-update** — checks for a new version at watcher start and periodically (default 24h), verifies and replaces itself (disable with `--no-auto-update`)
@@ -104,13 +107,15 @@ autore stop      # stop watching
 |---|---|
 | `start [options]` | Start background watcher (creates the tmux session if missing) |
 | `stop` | Stop the watcher |
-| `status` | Watcher state + tmux session + Telegram config + recent logs |
+| `status` | Watcher state + **interruption point** + tmux session + Telegram config + recent logs |
+| `last` | Screen snapshot at the last interruption + history |
 | `logs [-f]` | Show logs (`-f`: follow) |
 | `attach` | Attach to the AI CLI tmux session |
 | `run [options]` | Foreground watcher (for debugging) |
 | `update [--check]` | Self-update to the latest version (`--check`: check only) |
 | `test-telegram` | Send a Telegram test message to verify the setup |
-| `--selftest` | Parser unit tests |
+| `checksum` | Print the release SHA256 (to refresh `autore.sh.sha256`) |
+| `--selftest` | Parser + state-record unit tests |
 | `version` | Print version (same as `--version`) |
 | `help` | Print usage (same as `-h`, `--help`) |
 
@@ -122,19 +127,35 @@ For `start` / `run` (or use the matching environment variable):
 |---|---|---|---|
 | `--session NAME` | `AUTORE_SESSION` | `claude` | tmux session to watch (legacy `CLAUDE_SESSION` also works) |
 | `--cli CMD` | `CLI_CMD` | `claude` | AI CLI to launch when creating the session (e.g. `opencode`) |
+| `--target PANE` | `TARGET` | — | Watch only this window/pane (default: every pane in the session) |
 | `--poll SEC` | `POLL_SEC` | `30` | Screen check interval |
 | `--buffer SEC` | `BUFFER_SEC` | `90` | Extra wait after reset time |
 | `--fallback SEC` | `FALLBACK_SEC` | `900` | Retry delay when time parsing fails |
 | `--retry SEC` | `RETRY_SAME_KEY_SEC` | `600` | Resend interval for the same limit message |
 | `--max-resends N` | `MAX_RESENDS` | `2` | Max resends for the same limit message |
+| `--verify-sec SEC` | `VERIFY_SEC` | `15` | Wait for a screen reaction after sending (0 = off) |
+| `--no-clear-input` | `CLEAR_INPUT` | on | Do not clear the input line (C-u) before typing |
 | `--message TEXT` | `RESUME_MESSAGE` | `계속 이어서 진행해줘` | Message typed after reset |
 | `--log-file PATH` | `LOG_FILE` | `~/.autore.log` | Log file |
 | `--samples-file PATH` | `SAMPLES_FILE` | `~/.autore-samples.log` | Parse-sample collection file |
+| `--state-file PATH` | `STATE_FILE` | `~/.autore-state` | Interruption state file |
+| `--break-file PATH` | `BREAK_FILE` | `~/.autore-break.txt` | Screen snapshot at interruption |
+| `--breaks-log PATH` | `BREAKS_LOG` | `~/.autore-breaks.log` | Interruption history (one line each) |
+| `--pid-file PATH` | `PID_FILE` | `~/.autore.pid` | PID file |
+| `--snapshot-lines N` | `SNAPSHOT_LINES` | `60` | Screen lines kept in a snapshot |
 | `--telegram-token T` | `TELEGRAM_BOT_TOKEN` | — | Telegram bot token |
 | `--telegram-chat-id C` | `TELEGRAM_CHAT_ID` | — | Telegram chat ID |
 | `--no-auto-update` | `AUTO_UPDATE` | on | Disable auto-update |
+| `--log-max-bytes N` | `LOG_MAX_BYTES` | `1048576` | Log rotation threshold (0 = never) |
+| `--notify-cmd CMD` | `NOTIFY_CMD` | — | Generic notify hook (Slack/Discord/ntfy/...) |
 | `--auto-update-sec S` | `AUTO_UPDATE_SEC` | `86400` | Auto-update check interval (seconds) |
+| `--allow-unverified` | `ALLOW_UNVERIFIED` | — | Force a manual update when the checksum cannot be verified (`update` only) |
 | `--dry-run` | — | — | Log only, never send (for testing) |
+
+> Non-integer values for numeric options are rejected up front (e.g. `--poll abc`).
+> **For any session other than the default (`claude`), the file names get the session name appended** —
+> `autore start --session opencode` uses `~/.autore-opencode.log`, `~/.autore-opencode.pid`, and so on,
+> so watching several sessions never mixes their state.
 
 ## Telegram notifications (optional)
 
@@ -157,6 +178,37 @@ Then `autore start` will notify you on **watcher start / limit detection / resum
 
 > ⚠️ Passing the token as a CLI argument can expose it in `ps` output — environment variables are recommended.
 
+## Other notification channels (`--notify-cmd`)
+
+Any other channel goes through the notify hook. The message arrives as `$1`, along with the environment variables `AUTORE_EVENT` (`started` / `limit` / `limit_noparse` / `resumed` / `resume_skipped` / `resume_noreact` / `resend` / `autoupdate`), `AUTORE_MESSAGE`, `AUTORE_SESSION` and `AUTORE_VERSION`.
+
+```bash
+# Slack
+autore start --notify-cmd 'curl -s -X POST -H "Content-type: application/json" \
+  -d "{\"text\":\"$1\"}" https://hooks.slack.com/services/XXX'
+
+# ntfy
+autore start --notify-cmd 'curl -s -d "$1" https://ntfy.sh/my-topic'
+
+# desktop notification (Linux)
+autore start --notify-cmd 'notify-send autore "$1"'
+```
+
+## Update integrity
+
+`update` and auto-update compare the downloaded script against `autore.sh.sha256` in the repository.
+
+- **Auto-update**: if the hash differs or cannot be checked, the script is **not replaced** and the watcher keeps running the current version (fail-closed).
+- **Manual update**: a mismatch always aborts; only an *unavailable* checksum can be forced with `autore update --allow-unverified`.
+- Syntax check and self-test must still pass before the swap.
+
+> **Release note:** whenever `autore.sh` changes, regenerate the checksum and commit it together.
+> Forgetting it stops every user's auto-update (safely).
+>
+> ```bash
+> ./autore.sh checksum > autore.sh.sha256
+> ```
+
 ## How it works
 
 ```
@@ -172,9 +224,41 @@ Then `autore start` will notify you on **watcher start / limit detection / resum
                                      └──────────────────┘
 ```
 
-- The limit message is searched in the last 40 screen lines; wrapped messages are joined with the next 2 lines before parsing.
+- The limit message is searched in **every pane of the session**, in the last 40 lines of each; wrapped messages are joined with the next 2 lines before parsing. The resume message goes to the pane where the limit was found (pin it with `--target`).
 - Reset times outside the limit window (6h for bare times, 8 days for dated ones) are **rejected as misparses**.
 - The same limit message is resent at most `MAX_RESENDS` times to avoid spamming the session.
+
+## Where did it stop?
+
+autore records the **exact moment** the limit hit, so you can see what happened while you were away.
+
+```bash
+autore status    # when it stopped, when it resumes (live countdown)
+autore last      # screen snapshot right before the stop + recent history
+```
+
+Example `status` output:
+
+```
+== interruption point ==
+  ⏸ interrupted: 2026-07-27 15:04:39 (30m ago)
+     reset at:   2026-07-27 15:49
+     resume at:  2026-07-27 15:49:39 (in 15m)
+     last work:  ● Update(src/app.ts) — 42 additions
+     full snapshot: autore last
+```
+
+After resuming it shows `▶ resumed … (down for 45m)` — how long the work was actually stopped — and if the watcher died while waiting, the scheduled time is flagged as past due.
+
+Files written:
+
+| File | Contents |
+|---|---|
+| `~/.autore-state` | Current interruption state (waiting/resumed/cleared) + break, reset and resume times |
+| `~/.autore-break.txt` | Session screen snapshot right before the stop (60 lines by default) |
+| `~/.autore-breaks.log` | Interruption history, one line per event |
+
+Telegram alerts include the **last work line** from the interruption point as well.
 
 ## Parse samples & parser updates
 
@@ -204,7 +288,7 @@ If Anthropic changes the message format:
 
 - Message formats are based on the English Claude Code UI and common provider phrasings (rate limit, too many requests, quota exceeded). If the format changes, update the parser using the samples log (see above).
 - Reset times are interpreted in the local timezone.
-- If you manually resume the session while the watcher is waiting, one resume message may still be typed at the scheduled time (harmless, but good to know).
+- If you resume the session yourself while the watcher is waiting, it re-checks the screen at the scheduled time and skips the resume message when the limit is already gone.
 
 ## License
 
