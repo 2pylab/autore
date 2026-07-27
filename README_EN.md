@@ -23,7 +23,7 @@ It periodically checks the screen of an AI CLI session running in tmux. When it 
 - 🔐 **Signed updates** — replaces the script only when it matches the published SHA256 (auto-update aborts on any verification failure)
 - 🧪 **Built-in self-test** — `--selftest` runs 29 parser + state unit tests
 - 🐧🍎 **Linux + macOS** — bash 3.2 compatible; macOS only needs coreutils
-- 🌐 **Bilingual output** — CLI messages, logs, and Telegram alerts follow the OS locale (Korean/English)
+- 🌐 **Bilingual output** — CLI messages, logs, Telegram alerts and the installer follow the OS locale (Korean/English)
 - 🔄 **Auto-update** — checks for a new version at watcher start and periodically (default 24h), verifies and replaces itself (disable with `--no-auto-update`)
 - 📦 **One-line install** — installer with dependency checks
 
