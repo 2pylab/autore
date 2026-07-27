@@ -317,6 +317,7 @@ If Anthropic changes the message format:
 **What this tool is:**
 
 - A **simple wait-and-resume automation script** that reads the limit notice Claude Code **already displays on screen**, waits until the stated reset time, and types a resume message into **your own** terminal session.
+- The `autore usage` command is the one exception that types `/usage` into the session. It runs **only when you invoke it**; the watcher never does.
 - It does **not** bypass or circumvent usage limits. It makes no additional API calls to Anthropic services and does not alter authentication or access controls. It only resumes the session **after** the limit has legitimately reset.
 
 **Disclaimer:**

@@ -150,7 +150,7 @@
     <br><span class="note">(OpenCode 등 다른 AI CLI에도 사용 가능)</span>
   </p>
   <div class="badges">
-    <span class="badge ver">v2.6.0</span>
+    <span class="badge ver">v2.7.0</span>
     <span class="badge">멀티 CLI (Claude Code · OpenCode)</span>
     <span class="badge">Linux · macOS</span>
     <span class="badge">bash 3.2+</span>
@@ -169,6 +169,7 @@
   <h2><span class="num">01</span>기능</h2>
   <p class="sub">제한이 걸려도 잠이나 출근을 미룰 필요 없이, 리셋되면 알아서 작업이 다시 시작됩니다.</p>
   <div class="grid">
+    <div class="card"><h3>❓ CLI에 직접 물어보기</h3><p><code>autore usage</code>가 세션에 <code>/usage</code>를 입력해 사용량을 확인합니다. 작업 중이면 거부하고, 감시 루프는 절대 호출하지 않는 수동 전용 명령입니다.</p></div>
     <div class="card"><h3>📊 현재 한도 상태</h3><p><code>status</code>가 지금 제한에 걸렸는지 화면에서 확인하고 리셋까지 남은 시간, 오늘/최근 7일 중단 횟수와 총 중단 시간을 표시. API 호출은 하지 않습니다.</p></div>
     <div class="card"><h3>🖥 세션 한눈에</h3><p><code>status</code>가 tmux 세션 개수와, AI CLI가 어느 세션·pane·디렉터리에서 돌고 있는지 함께 표시. 프로세스 트리를 따라가 <code>node</code>로 보이는 실행도 찾아냅니다.</p></div>
     <div class="card"><h3>🔁 자동 재개</h3><p>제한 감지 → 리셋 시각 파싱 → 대기 → 세션에 재개 메시지 자동 입력. 대화 맥락 그대로 복귀.</p></div>
@@ -240,6 +241,7 @@ autore attach    # ② AI CLI 세션 접속 → 평소처럼 작업</code></pre>
     <tr><td><code>run [옵션]</code></td><td>포그라운드 감시 (디버깅용)</td></tr>
     <tr><td><code>update [--check]</code></td><td>최신 버전으로 자동 업데이트 (<code>--check</code>: 확인만)</td></tr>
     <tr><td><code>test-telegram</code></td><td>텔레그램 연동 테스트 메시지 발송</td></tr>
+    <tr><td><code>usage</code></td><td>세션에 <code>/usage</code>를 입력해 사용량 확인 (수동 실행 전용)</td></tr>
     <tr><td><code>checksum</code></td><td>배포용 SHA256 출력 (릴리스 시 <code>autore.sh.sha256</code> 갱신용)</td></tr>
     <tr><td><code>--selftest</code></td><td>파서·상태기록 단위 테스트 29종</td></tr>
     <tr><td><code>version</code></td><td>버전 출력 (<code>--version</code>과 동일)</td></tr>

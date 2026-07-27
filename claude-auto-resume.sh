@@ -22,7 +22,7 @@
 #===============================================================================
 set -uo pipefail
 
-VERSION="2.6.0"
+VERSION="2.7.0"
 REPO_RAW="${REPO_RAW:-https://raw.githubusercontent.com/2pylab/autore/main}"
 
 #--- Absolute path to this script (macOS-safe: no readlink -f) -------------------
@@ -275,6 +275,24 @@ MSG_KO_br_snap_header="[%s] 세션 '%s' — 중단 시점 화면"
 MSG_EN_br_snap_header="[%s] session '%s' — screen at interruption"
 MSG_KO_br_reset_unknown="파싱 실패"
 MSG_EN_br_reset_unknown="unparsed"
+MSG_KO_usg_err_nosession="오류: tmux 세션 '%s'이 없습니다 — 먼저 autore attach"
+MSG_EN_usg_err_nosession="error: no tmux session '%s' - run autore attach first"
+MSG_KO_usg_busy=$'세션이 작업 중입니다 — 지금 입력하면 다음 프롬프트로 들어갈 수 있어 중단했습니다
+  잠시 후 다시 시도하세요'
+MSG_EN_usg_busy=$'the session looks busy - typing now could land in the next prompt, so this was aborted
+  try again in a moment'
+MSG_KO_usg_sending="'/usage' 입력 후 %s초 대기합니다... (pane: %s)"
+MSG_EN_usg_sending="typing '/usage' and waiting %ss... (pane: %s)"
+MSG_KO_usg_header="== /usage 결과 =="
+MSG_EN_usg_header="== /usage output =="
+MSG_KO_usg_dryrun="[DRY-RUN] '/usage' 전송 생략 (pane: %s)"
+MSG_EN_usg_dryrun="[DRY-RUN] skipped sending '/usage' (pane: %s)"
+MSG_KO_usg_closed="패널을 닫았습니다 (Esc) — 열어두려면 --keep-panel"
+MSG_EN_usg_closed="panel closed (Esc) - use --keep-panel to leave it open"
+MSG_KO_usg_kept="패널을 열어둔 상태입니다 — 세션에서 Esc로 닫으세요"
+MSG_EN_usg_kept="the panel is still open - press Esc in the session to close it"
+MSG_KO_usg_note="※ 이 명령만 세션에 직접 '/usage'를 입력합니다. 감시 루프와 status는 호출하지 않습니다"
+MSG_EN_usg_note="note: only this command types '/usage' into your session; the watcher and status never do"
 MSG_KO_st_header_limit="== 사용 한도 =="
 MSG_EN_st_header_limit="== usage limit =="
 MSG_KO_st_lim_blocked="⛔ 제한 중:    "
@@ -374,6 +392,8 @@ FALLBACK_SEC="${FALLBACK_SEC:-900}"
 RETRY_SAME_KEY_SEC="${RETRY_SAME_KEY_SEC:-600}"
 MAX_RESENDS="${MAX_RESENDS:-2}"
 VERIFY_SEC="${VERIFY_SEC:-15}"                  # wait for a screen reaction after resuming (0 = skip)
+USAGE_WAIT="${USAGE_WAIT:-3}"                   # seconds to wait for the /usage panel to render
+USAGE_KEEP="${USAGE_KEEP:-0}"                   # 1 leaves the /usage panel open instead of pressing Esc
 CLEAR_INPUT="${CLEAR_INPUT:-1}"                 # clear the input line (C-u) before typing
 RESUME_MESSAGE="${RESUME_MESSAGE:-$(t default_resume_msg)}"
 LOG_FILE="${LOG_FILE:-}"
@@ -422,6 +442,7 @@ autore v${VERSION} — AI CLI 사용량 제한 자동 재개 도구
   autore run [옵션]     포그라운드 감시 (디버깅용)
   autore update [--check] 최신 버전으로 업데이트 (--check: 확인만)
   autore test-telegram  텔레그램 연동 테스트 메시지 발송
+  autore usage          세션에 '/usage'를 입력해 사용량 확인 (수동 실행 전용)
   autore checksum       배포용 SHA256 출력 (릴리스 시 autore.sh.sha256 갱신용)
   autore --selftest     파서·상태기록 단위 테스트
   autore version        버전 출력 (--version 도 동일)
@@ -453,6 +474,10 @@ autore v${VERSION} — AI CLI 사용량 제한 자동 재개 도구
   --no-auto-update    자동 업데이트 비활성화       (기본: 활성 — 시작 시 + 주기마다 확인)
   --auto-update-sec S 자동 업데이트 확인 주기      (기본: 86400)
   --dry-run           실제 전송 없이 로그만 기록
+
+옵션 (usage):
+  --usage-wait SEC    '/usage' 입력 후 결과 대기 시간   (기본: 3)
+  --keep-panel        조회 후 Esc를 보내지 않고 패널 유지
 
 옵션 (update):
   --check             새 버전 확인만 (교체하지 않음)
@@ -487,6 +512,7 @@ Usage:
   autore run [options]     foreground watcher (for debugging)
   autore update [--check]  update to the latest version (--check: check only)
   autore test-telegram     send a Telegram test message
+  autore usage             type '/usage' into the session to check quota (manual only)
   autore checksum          print the release SHA256 (to refresh autore.sh.sha256)
   autore --selftest        parser + state-record unit tests
   autore version           print version (same as --version)
@@ -519,6 +545,10 @@ Options (start / run):
   --auto-update-sec S auto-update check interval   (default: 86400)
   --dry-run           log only, never send
 
+Options (usage):
+  --usage-wait SEC    wait this long for the /usage panel (default: 3)
+  --keep-panel        leave the panel open instead of pressing Esc
+
 Options (update):
   --check             only check for a new version
   --allow-unverified  update even when the checksum cannot be verified (not recommended)
@@ -548,7 +578,7 @@ need_value() { [[ $# -ge 2 ]] || { echo "$(t err_need_value "$1")" >&2; exit 1; 
 
 while (($#)); do
   case "$1" in
-    start|stop|status|attach|run|test-telegram|last|checksum) CMD="$1"; shift ;;
+    start|stop|status|attach|run|test-telegram|last|checksum|usage) CMD="$1"; shift ;;
     logs)
       CMD="logs"; shift
       [[ ${1:-} == -f ]] && { LOGS_FOLLOW=1; shift; }
@@ -568,6 +598,8 @@ while (($#)); do
     --message)        need_value "$@"; RESUME_MESSAGE="$2"; shift 2 ;;
     --verify-sec)     need_value "$@"; VERIFY_SEC="$2"; shift 2 ;;
     --no-clear-input) CLEAR_INPUT=0; shift ;;
+    --usage-wait)     need_value "$@"; USAGE_WAIT="$2"; shift 2 ;;
+    --keep-panel)     USAGE_KEEP=1; shift ;;
     --log-file)       need_value "$@"; LOG_FILE="$2"; LOG_FILE_SET=1; shift 2 ;;
     --samples-file)   need_value "$@"; SAMPLES_FILE="$2"; SAMPLES_FILE_SET=1; shift 2 ;;
     --state-file)     need_value "$@"; STATE_FILE="$2"; STATE_FILE_SET=1; shift 2 ;;
@@ -606,6 +638,7 @@ require_num --fallback        "$FALLBACK_SEC" 1
 require_num --retry           "$RETRY_SAME_KEY_SEC" 1
 require_num --max-resends     "$MAX_RESENDS"
 require_num --verify-sec      "$VERIFY_SEC"
+require_num --usage-wait      "$USAGE_WAIT"
 require_num --snapshot-lines  "$SNAPSHOT_LINES" 1
 require_num --log-max-bytes   "$LOG_MAX_BYTES"
 require_num --auto-update-sec "$AUTO_UPDATE_SEC" 1
@@ -1628,6 +1661,76 @@ cmd_last() {
   fi
 }
 
+#-------------------------------------------------------------------------------
+# autore usage - ask the CLI itself by typing /usage into the session
+#
+# This is the one command that types into the session outside a limit recovery,
+# so it only ever runs when the user asks for it: the watch loop and `status`
+# never call it. It refuses while the session looks busy, because keystrokes sent
+# to a working CLI can queue up and land in the next prompt.
+#-------------------------------------------------------------------------------
+# Locate the pane actually running the CLI (falls back to the session's active pane)
+find_cli_pane() {
+  if [[ -n $TARGET ]]; then PANE="$TARGET"; return 0; fi
+  local ps_table p_name p_loc p_path p_pid
+  ps_table=$(ps -e -o pid=,ppid=,args= 2>/dev/null)
+  while IFS='|' read -r p_name p_loc p_path p_pid; do
+    [[ $p_name == "$SESSION" ]] || continue
+    if pane_runs_cli "$p_pid" "$ps_table"; then PANE="$p_name:$p_loc"; return 0; fi
+  done <<EOF
+$(tmux list-panes -a -F '#{session_name}|#{window_index}.#{pane_index}|#{pane_current_path}|#{pane_pid}' 2>/dev/null)
+EOF
+  PANE="$SESSION"
+  return 0
+}
+
+# 0 = the session looks busy (do not type into it)
+session_busy() {
+  local a b
+  a=$(capture_pane)
+  # Claude Code prints an interrupt hint while it is working
+  printf '%s' "$a" | grep -qiE 'to interrupt' && return 0
+  sleep 1.2
+  b=$(capture_pane)
+  [[ $a != "$b" ]] && return 0
+  return 1
+}
+
+cmd_usage() {
+  command -v tmux >/dev/null 2>&1 || { echo "$(t err_no_tmux)" >&2; exit 1; }
+  tmux has-session -t "$SESSION" 2>/dev/null || { echo "$(t usg_err_nosession "$SESSION")" >&2; exit 1; }
+  find_cli_pane
+
+  if (( DRY_RUN )); then
+    echo "$(t usg_dryrun "$PANE")"
+    exit 0
+  fi
+  if session_busy; then
+    echo "$(t usg_busy)" >&2
+    exit 1
+  fi
+
+  echo "$(t usg_sending "$USAGE_WAIT" "$PANE")"
+  tmux send-keys -t "$PANE" C-u 2>/dev/null
+  tmux send-keys -t "$PANE" -l -- "/usage"
+  sleep 0.5
+  tmux send-keys -t "$PANE" Enter
+  sleep "$USAGE_WAIT"
+
+  echo
+  echo "$(t usg_header)"
+  capture_pane | sed -e 's/[[:space:]]*$//' | grep -v '^$'
+  echo
+
+  if (( USAGE_KEEP )); then
+    echo "$(t usg_kept)"
+  else
+    tmux send-keys -t "$PANE" Escape 2>/dev/null
+    echo "$(t usg_closed)"
+  fi
+  echo "$(t usg_note)"
+}
+
 # Print the release checksum - refresh it with `autore checksum > autore.sh.sha256`
 # (computed on the LF content that gets committed, to match raw.githubusercontent)
 cmd_checksum() {
@@ -1856,6 +1959,7 @@ case "$CMD" in
   status)   cmd_status ;;
   last)     cmd_last ;;
   checksum) cmd_checksum ;;
+  usage)    cmd_usage ;;
   logs)     cmd_logs ;;
   attach)   cmd_attach ;;
   update)   cmd_update ;;
