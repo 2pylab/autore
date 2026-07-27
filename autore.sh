@@ -20,7 +20,7 @@
 #===============================================================================
 set -uo pipefail
 
-VERSION="2.4.1"
+VERSION="2.5.0"
 REPO_RAW="${REPO_RAW:-https://raw.githubusercontent.com/2pylab/autore/main}"
 
 #--- 스크립트 절대 경로 (macOS 호환: readlink -f 미사용) -------------------------
@@ -273,6 +273,22 @@ MSG_KO_br_snap_header="[%s] 세션 '%s' — 중단 시점 화면"
 MSG_EN_br_snap_header="[%s] session '%s' — screen at interruption"
 MSG_KO_br_reset_unknown="파싱 실패"
 MSG_EN_br_reset_unknown="unparsed"
+MSG_KO_st_header_sessions="== tmux 세션 (%s개) =="
+MSG_EN_st_header_sessions="== tmux sessions (%s) =="
+MSG_KO_st_sess_none="(실행 중인 tmux 세션 없음)"
+MSG_EN_st_sess_none="(no tmux session running)"
+MSG_KO_st_sess_windows="창 %s개"
+MSG_EN_st_sess_windows="%s windows"
+MSG_KO_st_sess_window="창 %s개"
+MSG_EN_st_sess_window="%s window"
+MSG_KO_st_sess_attached="접속됨"
+MSG_EN_st_sess_attached="attached"
+MSG_KO_st_sess_cli_run="%s 실행 중"
+MSG_EN_st_sess_cli_run="%s running"
+MSG_KO_st_sess_cli_none="%s 없음"
+MSG_EN_st_sess_cli_none="no %s"
+MSG_KO_st_sess_watching="← 감시 중"
+MSG_EN_st_sess_watching="← watching"
 MSG_KO_st_header_break="== 중단 시점 =="
 MSG_EN_st_header_break="== interruption point =="
 MSG_KO_st_br_none="(중단 기록 없음)"
@@ -1291,13 +1307,90 @@ cmd_stop() {
   rm -f "$PID_FILE"
 }
 
-cmd_status() {
-  # 색상 — 터미널 출력 시에만 적용 (파이프/리다이렉션 시 자동 해제, NO_COLOR 지원)
-  local reset='' bold='' dim='' green='' red='' yellow='' cyan=''
-  if [[ -t 1 && -z ${NO_COLOR:-} ]]; then
-    reset=$'\033[0m'; bold=$'\033[1m'; dim=$'\033[2m'
-    green=$'\033[32m'; red=$'\033[31m'; yellow=$'\033[33m'; cyan=$'\033[36m'
+#-------------------------------------------------------------------------------
+# tmux 세션 목록 — 몇 개가 떠 있고, AI CLI가 실제로 어느 pane·경로에서 도는지
+#
+# pane의 foreground 명령만 보면 부족하다 (Claude Code는 node로 보이는 경우가 많음).
+# 그래서 pane 프로세스와 그 자손을 ps로 훑어 CLI 이름이 있는지 확인한다.
+#-------------------------------------------------------------------------------
+# pane_runs_cli <pane_pid> <ps_table> — pane 아래에서 CLI가 돌고 있으면 0
+pane_runs_cli() {
+  [[ -n $1 && -n $2 ]] || return 1
+  printf '%s\n' "$2" | awk -v pp="$1" -v cli="$CLI_CMD" '
+    {
+      pid=$1; ppid=$2
+      args=$0; sub(/^[[:space:]]*[0-9]+[[:space:]]+[0-9]+[[:space:]]+/, "", args)
+      PAR[pid]=ppid; ARG[pid]=args
+    }
+    END {
+      for (p in ARG) {
+        if (index(tolower(ARG[p]), tolower(cli)) == 0) continue
+        q=p
+        for (i=0; i<8 && q != "" && q != "0"; i++) {   # 조상을 따라 올라가며 pane 프로세스인지 확인
+          if (q == pp) { exit 0 }
+          q=PAR[q]
+        }
+      }
+      exit 1
+    }'
+}
+
+print_sessions() { # <색상 변수는 인자로 받지 않고 전역 CLR_* 사용>
+  local sess panes ps_table count name wins att found path mark dot
+  command -v tmux >/dev/null 2>&1 || return 0
+  sess=$(tmux list-sessions -F '#{session_name}|#{session_windows}|#{session_attached}' 2>/dev/null)
+  count=$(printf '%s' "$sess" | grep -c . 2>/dev/null)
+  [[ $count =~ ^[0-9]+$ ]] || count=0
+  printf '\n%s%s%s%s\n' "$CLR_BOLD" "$CLR_CYAN" "$(t st_header_sessions "$count")" "$CLR_RESET"
+  if (( count == 0 )); then
+    printf '  %s%s%s\n' "$CLR_DIM" "$(t st_sess_none)" "$CLR_RESET"
+    return 0
   fi
+  panes=$(tmux list-panes -a -F '#{session_name}|#{window_index}.#{pane_index}|#{pane_current_path}|#{pane_pid}' 2>/dev/null)
+  ps_table=$(ps -e -o pid=,ppid=,args= 2>/dev/null)
+
+  while IFS='|' read -r name wins att; do
+    [[ -n $name ]] || continue
+    found=""; path=""
+    while IFS='|' read -r p_name p_loc p_path p_pid; do
+      [[ $p_name == "$name" ]] || continue
+      if pane_runs_cli "$p_pid" "$ps_table"; then
+        found="$name:$p_loc"; path="$p_path"; break
+      fi
+    done <<EOF
+$panes
+EOF
+    # 감시 대상 세션 표시
+    mark=""; dot="$CLR_DIM○$CLR_RESET"
+    [[ $name == "$SESSION" ]] && { mark="  $CLR_CYAN$(t st_sess_watching)$CLR_RESET"; dot="$CLR_GREEN●$CLR_RESET"; }
+    printf '  %s %s%-12s%s %s%s' "$dot" "$CLR_BOLD" "$name" "$CLR_RESET" "$CLR_DIM" "$( (( wins == 1 )) && t st_sess_window "$wins" || t st_sess_windows "$wins" )"
+    [[ $att == 1 ]] && printf ' · %s' "$(t st_sess_attached)"
+    printf '%s' "$CLR_RESET"
+    if [[ -n $found ]]; then
+      printf ' · %s%s%s → %s' "$CLR_GREEN" "$(t st_sess_cli_run "$CLI_CMD")" "$CLR_RESET" "$found"
+      [[ -n $path ]] && printf ' %s(%s)%s' "$CLR_DIM" "${path/#$HOME/\~}" "$CLR_RESET"
+    else
+      printf ' · %s%s%s' "$CLR_DIM" "$(t st_sess_cli_none "$CLI_CMD")" "$CLR_RESET"
+    fi
+    printf '%s\n' "$mark"
+  done <<EOF
+$sess
+EOF
+}
+
+# 색상 — 터미널 출력 시에만 적용 (파이프/리다이렉션 시 자동 해제, NO_COLOR 지원)
+CLR_RESET=''; CLR_BOLD=''; CLR_DIM=''; CLR_GREEN=''; CLR_RED=''; CLR_YELLOW=''; CLR_CYAN=''
+setup_colors() {
+  if [[ -t 1 && -z ${NO_COLOR:-} ]]; then
+    CLR_RESET=$'\033[0m'; CLR_BOLD=$'\033[1m'; CLR_DIM=$'\033[2m'
+    CLR_GREEN=$'\033[32m'; CLR_RED=$'\033[31m'; CLR_YELLOW=$'\033[33m'; CLR_CYAN=$'\033[36m'
+  fi
+}
+
+cmd_status() {
+  setup_colors
+  local reset="$CLR_RESET" bold="$CLR_BOLD" dim="$CLR_DIM"
+  local green="$CLR_GREEN" red="$CLR_RED" yellow="$CLR_YELLOW" cyan="$CLR_CYAN"
 
   # 현재 상태 — 지금 이 순간의 실시간 검사 결과
   printf '%s%s%s%s\n' "$bold" "$cyan" "$(t st_header_state)" "$reset"
@@ -1321,6 +1414,9 @@ cmd_status() {
   else
     printf '  %s●%s %s%s%s%s\n' "$dim" "$reset" "$(t st_l_tg)" "$dim" "$(t st_tg_unset)" "$reset"
   fi
+
+  # tmux 세션 — 몇 개가 떠 있고 AI CLI가 어디서 도는지
+  print_sessions
 
   # 중단 시점 — 언제 어디서 멈췄고, 언제 이어졌는지
   printf '\n%s%s%s%s\n' "$bold" "$cyan" "$(t st_header_break)" "$reset"

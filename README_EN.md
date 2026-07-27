@@ -15,6 +15,7 @@ It periodically checks the screen of an AI CLI session running in tmux. When it 
 - 🔁 **Auto-resume** — detect limit → parse reset time → sleep → type resume message into the session
 - 🤖 **Multi-CLI** — watch other AI CLIs via `--cli` (note: OpenCode has built-in rate-limit retry, so this is mainly useful for Telegram alerts)
 - ⏱ **Layered time parser** — handles `3pm`, `3:30 PM`, `15:00`, `Jul 28 at 3pm` (weekly limits), `tomorrow at 9am`, midnight/year rollover, and line-wrapped messages
+- 🖥 **Session overview** — `status` shows how many tmux sessions are up and **which session/pane/directory the AI CLI is actually running in**
 - ⏸ **Interruption point** — snapshots the screen at the moment the limit hit; `status` shows when it stopped and when it resumes, `last` shows what it was doing
 - 🛡 **Safety guards** — dedupes identical limit messages, rejects implausible times (5-hour window validation), periodic retry on parse failure
 - 📨 **Telegram + generic hook** — bot alerts on limit detection / resume / retry, plus `--notify-cmd` for Slack, Discord, ntfy, anything
@@ -107,7 +108,7 @@ autore stop      # stop watching
 |---|---|
 | `start [options]` | Start background watcher (creates the tmux session if missing) |
 | `stop` | Stop the watcher |
-| `status` | Watcher state + **interruption point** + tmux session + Telegram config + recent logs |
+| `status` | Watcher state + **interruption point** + **tmux session list (where the AI CLI runs)** + Telegram config + recent logs |
 | `last` | Screen snapshot at the last interruption + history |
 | `logs [-f]` | Show logs (`-f`: follow) |
 | `attach` | Attach to the AI CLI tmux session |
@@ -227,6 +228,22 @@ autore start --notify-cmd 'notify-send autore "$1"'
 - The limit message is searched in **every pane of the session**, in the last 40 lines of each; wrapped messages are joined with the next 2 lines before parsing. The resume message goes to the pane where the limit was found (pin it with `--target`).
 - Reset times outside the limit window (6h for bare times, 8 days for dated ones) are **rejected as misparses**.
 - The same limit message is resent at most `MAX_RESENDS` times to avoid spamming the session.
+
+## Session overview
+
+`status` lists the tmux sessions that are up, and where the AI CLI is actually running.
+
+```
+== tmux sessions (3) ==
+  ● claude       2 windows · attached · claude running -> claude:0.0 (~/Github/vllm-setup)  <- watching
+  o dev          1 window · no claude
+  o opencode     1 window · no claude
+```
+
+- `●` / `<- watching` marks the session autore watches; `o` marks the others
+- The location is shown as `session:window.pane` plus that pane's current directory
+- Even when the pane's surface command looks like `node`, autore **walks the process tree** to find the CLI (including npm/nvm launches)
+- Which CLI to look for follows `--cli` (`--cli opencode` reports opencode instead)
 
 ## Where did it stop?
 
