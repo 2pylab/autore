@@ -15,6 +15,7 @@ It periodically checks the screen of an AI CLI session running in tmux. When it 
 - 🔁 **Auto-resume** — detect limit → parse reset time → sleep → type resume message into the session
 - 🤖 **Multi-CLI** — watch other AI CLIs via `--cli` (note: OpenCode has built-in rate-limit retry, so this is mainly useful for Telegram alerts)
 - ⏱ **Layered time parser** — handles `3pm`, `3:30 PM`, `15:00`, `Jul 28 at 3pm` (weekly limits), `tomorrow at 9am`, midnight/year rollover, and line-wrapped messages
+- 📊 **Live limit state** — `status` reads the screen to tell you whether you are limited right now, how long until the reset, and how often/long you were blocked today and over the last 7 days
 - 🖥 **Session overview** — `status` shows how many tmux sessions are up and **which session/pane/directory the AI CLI is actually running in**
 - ⏸ **Interruption point** — snapshots the screen at the moment the limit hit; `status` shows when it stopped and when it resumes, `last` shows what it was doing
 - 🛡 **Safety guards** — dedupes identical limit messages, rejects implausible times (5-hour window validation), periodic retry on parse failure
@@ -108,7 +109,7 @@ autore stop      # stop watching
 |---|---|
 | `start [options]` | Start background watcher (creates the tmux session if missing) |
 | `stop` | Stop the watcher |
-| `status` | Watcher state + **interruption point** + **tmux session list (where the AI CLI runs)** + Telegram config + recent logs |
+| `status` | Watcher state + **current limit** + **interruption point** + **tmux session list (where the AI CLI runs)** + Telegram config + recent logs |
 | `last` | Screen snapshot at the last interruption + history |
 | `logs [-f]` | Show logs (`-f`: follow) |
 | `attach` | Attach to the AI CLI tmux session |
@@ -228,6 +229,29 @@ autore start --notify-cmd 'notify-send autore "$1"'
 - The limit message is searched in **every pane of the session**, in the last 40 lines of each; wrapped messages are joined with the next 2 lines before parsing. The resume message goes to the pane where the limit was found (pin it with `--target`).
 - Reset times outside the limit window (6h for bare times, 8 days for dated ones) are **rejected as misparses**.
 - The same limit message is resent at most `MAX_RESENDS` times to avoid spamming the session.
+
+## Current limit state
+
+`status` checks the screen for a limit message right now and adds the running totals.
+
+```
+== usage limit ==
+  ⛔ limited:    resets 07-27 17:25 (in 41m) · %1
+  2 today · 3 in the last 7 days · 3h 37m total downtime · 1 without a recorded resume
+```
+
+When nothing is blocking:
+
+```
+== usage limit ==
+  ✅ no limit    (no limit message on screen)
+  0 today · 3 in the last 7 days · 3h 37m total downtime
+```
+
+- **No API calls.** It only reads the limit message the AI CLI already printed, plus the interruption history autore recorded itself
+- The countdown uses the same parser as the watch loop (and includes `--buffer`)
+- Stats come from `~/.autore-breaks.log`; entries with no recorded resume (watcher died mid-wait, ...) are counted separately
+- With no session it shows `- unknown`, and the stats are still printed
 
 ## Session overview
 

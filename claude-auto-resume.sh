@@ -22,7 +22,7 @@
 #===============================================================================
 set -uo pipefail
 
-VERSION="2.5.0"
+VERSION="2.6.0"
 REPO_RAW="${REPO_RAW:-https://raw.githubusercontent.com/2pylab/autore/main}"
 
 #--- Absolute path to this script (macOS-safe: no readlink -f) -------------------
@@ -275,6 +275,30 @@ MSG_KO_br_snap_header="[%s] 세션 '%s' — 중단 시점 화면"
 MSG_EN_br_snap_header="[%s] session '%s' — screen at interruption"
 MSG_KO_br_reset_unknown="파싱 실패"
 MSG_EN_br_reset_unknown="unparsed"
+MSG_KO_st_header_limit="== 사용 한도 =="
+MSG_EN_st_header_limit="== usage limit =="
+MSG_KO_st_lim_blocked="⛔ 제한 중:    "
+MSG_EN_st_lim_blocked="⛔ limited:    "
+MSG_KO_st_lim_clear="✅ 제한 없음   "
+MSG_EN_st_lim_clear="✅ no limit    "
+MSG_KO_st_lim_unknown="- 확인 불가    "
+MSG_EN_st_lim_unknown="- unknown      "
+MSG_KO_st_lim_nosession="(세션이 없어 화면을 확인할 수 없음)"
+MSG_EN_st_lim_nosession="(no session, cannot read the screen)"
+MSG_KO_st_lim_screen_clear="(화면에 제한 메시지 없음)"
+MSG_EN_st_lim_screen_clear="(no limit message on screen)"
+MSG_KO_st_lim_reset="리셋 %s"
+MSG_EN_st_lim_reset="resets %s"
+MSG_KO_st_lim_noparse="리셋 시각 파싱 불가"
+MSG_EN_st_lim_noparse="reset time unparsable"
+MSG_KO_st_lim_stats="오늘 %s회 · 최근 7일 %s회 중단"
+MSG_EN_st_lim_stats="%s today · %s in the last 7 days"
+MSG_KO_st_lim_downtime=" · 총 중단 %s"
+MSG_EN_st_lim_downtime=" · %s total downtime"
+MSG_KO_st_lim_pending=" · 재개 미확인 %s건"
+MSG_EN_st_lim_pending=" · %s without a recorded resume"
+MSG_KO_st_lim_nostats="(중단 이력 없음)"
+MSG_EN_st_lim_nostats="(no interruption history)"
 MSG_KO_st_header_sessions="== tmux 세션 (%s개) =="
 MSG_EN_st_header_sessions="== tmux sessions (%s) =="
 MSG_KO_st_sess_none="(실행 중인 tmux 세션 없음)"
@@ -761,11 +785,24 @@ save_break() {
   } > "$BREAK_FILE" 2>/dev/null || true
 }
 
-# Append one line to the interruption history
+# Append one line to the interruption history (resumed= is filled in later)
 append_break_log() {
-  printf '%s | reset=%s | resume=%s | session=%s | %s\n' \
-    "$ST_BREAK_AT" "${ST_RESET_AT:-$(t br_reset_unknown)}" "${ST_RESUME_AT:-?}" \
+  printf '%s | reset=%s | resumed=- | session=%s | %s\n' \
+    "$ST_BREAK_AT" "${ST_RESET_AT:-$(t br_reset_unknown)}" \
     "$SESSION" "$ST_LAST_WORK" >> "$BREAKS_LOG" 2>/dev/null || true
+}
+
+# Fill in the real resume time on the last history line, so downtime stats are exact
+finish_break_log() { # <resume timestamp>
+  [[ -s $BREAKS_LOG ]] || return 0
+  local tmp="${BREAKS_LOG}.tmp"
+  awk -v ts="$1" -F' \\| ' -v OFS=' | ' '
+    NR==FNR { n=FNR; next }
+    FNR==n  { $3="resumed=" ts }
+    { print }' "$BREAKS_LOG" "$BREAKS_LOG" > "$tmp" 2>/dev/null \
+    && mv -f "$tmp" "$BREAKS_LOG" 2>/dev/null
+  rm -f "$tmp" 2>/dev/null
+  return 0
 }
 
 #-------------------------------------------------------------------------------
@@ -1131,6 +1168,7 @@ handle_limit() { # <limit_block>
     log "$(t log_resume_skip)"
     ST_RESUME_EPOCH=$(date +%s); ST_RESUME_AT=$(date '+%F %H:%M:%S')
     write_state cleared
+    finish_break_log "$ST_RESUME_AT"
     notify "$(t tg_resume_skip)" resume_skipped
     return 0
   fi
@@ -1142,6 +1180,7 @@ handle_limit() { # <limit_block>
   ST_RESUME_EPOCH=$(date +%s)
   ST_RESUME_AT=$(date '+%F %H:%M:%S')
   write_state resumed
+  finish_break_log "$ST_RESUME_AT"
   notify "$(t tg_resumed "$RESUME_MESSAGE")" resumed
   verify_resume "$screen_before"
   return 0
@@ -1380,6 +1419,93 @@ $sess
 EOF
 }
 
+#-------------------------------------------------------------------------------
+# Usage limit, right now
+#
+# autore never queries any API - it only reads what the CLI already printed on
+# screen, plus the interruption history it recorded itself.
+#-------------------------------------------------------------------------------
+# print_limit - live limit state + history stats
+print_limit() {
+  local block target rc now left reset_desc
+  printf '\n%s%s%s%s\n' "$CLR_BOLD" "$CLR_CYAN" "$(t st_header_limit)" "$CLR_RESET"
+
+  # (1) Live check: is a limit message on screen at this moment?
+  if ! command -v tmux >/dev/null 2>&1 || ! tmux has-session -t "$SESSION" 2>/dev/null; then
+    printf '  %s%s%s%s\n' "$CLR_DIM" "$(t st_lim_unknown)" "$(t st_lim_nosession)" "$CLR_RESET"
+  else
+    find_limit_pane
+    block="$LIMIT_BLOCK"
+    if [[ -z $block ]]; then
+      printf '  %s%s%s%s%s\n' "$CLR_GREEN" "$(t st_lim_clear)" "$CLR_RESET$CLR_DIM" "$(t st_lim_screen_clear)" "$CLR_RESET"
+    else
+      [[ -z $DATE ]] && DATE=$(detect_gnu_date 2>/dev/null || printf '')
+      now=$(date +%s)
+      target=""; rc=1
+      [[ -n $DATE ]] && { target=$(parse_reset_epoch "$block" "$now"); rc=$?; }
+      printf '  %s%s%s' "$CLR_RED$CLR_BOLD" "$(t st_lim_blocked)" "$CLR_RESET"
+      if (( rc == 0 )) && [[ -n $target ]]; then
+        reset_desc=$("$DATE" -d "@$target" '+%m-%d %H:%M')
+        left=$(( target + BUFFER_SEC - now ))
+        printf '%s' "$(t st_lim_reset "$reset_desc")"
+        (( left > 0 )) && printf ' %s(%s)%s' "$CLR_YELLOW" "$(t dur_left "$(human_dur "$left")")" "$CLR_RESET"
+      else
+        printf '%s%s%s' "$CLR_DIM" "$(t st_lim_noparse)" "$CLR_RESET"
+      fi
+      [[ -n $PANE ]] && printf ' %s· %s%s' "$CLR_DIM" "$PANE" "$CLR_RESET"
+      printf '\n'
+    fi
+  fi
+
+  # (2) History stats - how often and how long this session has been blocked
+  print_limit_stats
+}
+
+# Counts and total downtime from the interruption history
+print_limit_stats() {
+  local today cutoff line stats
+  [[ -s $BREAKS_LOG ]] || { printf '  %s%s%s\n' "$CLR_DIM" "$(t st_lim_nostats)" "$CLR_RESET"; return 0; }
+  [[ -z $DATE ]] && DATE=$(detect_gnu_date 2>/dev/null || printf '')
+  today=$(date '+%F')
+  cutoff=""
+  [[ -n $DATE ]] && cutoff=$("$DATE" -d '7 days ago' '+%F %T' 2>/dev/null)
+
+  # awk output: "<today count> <7-day count> <total downtime seconds> <unfinished count>"
+  stats=$(awk -F' \\| ' -v today="$today" -v cutoff="$cutoff" '
+    {
+      broke=$1
+      if (substr(broke,1,10) == today) d++
+      if (cutoff == "" || broke >= cutoff) w++
+      res=""
+      for (i=2; i<=NF; i++) if ($i ~ /^resumed=/) { res=substr($i,9); break }
+      if (res != "" && res != "-") { pairs = pairs broke "\t" res "\n" } else { pend++ }
+    }
+    END { printf "%d %d %d\n", d+0, w+0, pend+0; printf "%s", pairs }' "$BREAKS_LOG")
+
+  local counts pairs total=0 b r bs rs
+  counts=$(printf '%s\n' "$stats" | head -n 1)
+  pairs=$(printf '%s\n' "$stats" | tail -n +2)
+  if [[ -n $DATE && -n $pairs ]]; then
+    while IFS=$'\t' read -r b r; do
+      [[ -n $b && -n $r ]] || continue
+      bs=$("$DATE" -d "$b" +%s 2>/dev/null) || continue
+      rs=$("$DATE" -d "$r" +%s 2>/dev/null) || continue
+      (( rs > bs )) && total=$(( total + rs - bs ))
+    done <<EOF
+$pairs
+EOF
+  fi
+
+  local d w pend
+  read -r d w pend <<EOF
+$counts
+EOF
+  printf '  %s%s' "$CLR_DIM" "$(t st_lim_stats "${d:-0}" "${w:-0}")"
+  (( total > 0 )) && printf '%s' "$(t st_lim_downtime "$(human_dur "$total")")"
+  (( ${pend:-0} > 0 )) && printf '%s' "$(t st_lim_pending "$pend")"
+  printf '%s\n' "$CLR_RESET"
+}
+
 # Colors - only on a terminal (auto-disabled when piped/redirected, honours NO_COLOR)
 CLR_RESET=''; CLR_BOLD=''; CLR_DIM=''; CLR_GREEN=''; CLR_RED=''; CLR_YELLOW=''; CLR_CYAN=''
 setup_colors() {
@@ -1416,6 +1542,9 @@ cmd_status() {
   else
     printf '  %s●%s %s%s%s%s\n' "$dim" "$reset" "$(t st_l_tg)" "$dim" "$(t st_tg_unset)" "$reset"
   fi
+
+  # Usage limit - live check plus history stats
+  print_limit
 
   # tmux sessions - how many are up and where the AI CLI runs
   print_sessions
